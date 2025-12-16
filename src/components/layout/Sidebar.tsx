@@ -5,34 +5,32 @@ import {
   Phone,
   Users,
   ShoppingCart,
-  Clock,
-  ListTodo,
-  RefreshCw,
   Settings,
   ChevronLeft,
   ChevronRight,
   Building2,
+  LogOut,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-
-const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/calls', label: 'Call Log', icon: Phone },
-  { path: '/leads', label: 'Leads', icon: Users },
-  { path: '/orders', label: 'Orders', icon: ShoppingCart },
-  { path: '/aging', label: 'Aging Tracker', icon: Clock },
-  { path: '/tasks', label: 'Tasks', icon: ListTodo },
-  { path: '/handover', label: 'Shift Handover', icon: RefreshCw },
-  { path: '/master', label: 'Master Data', icon: Settings },
-];
+import { useAuth } from '@/contexts/AuthContext';
 
 const Sidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
-  const { currentUser, getStats } = useCRM();
-  const stats = getStats();
+  const { currentUser } = useCRM();
+  const { logout } = useAuth();
+
+  const isAdmin = currentUser.role === 'Admin';
+
+  const navItems = [
+    { path: '/', label: 'Dashboard', icon: LayoutDashboard, show: true },
+    { path: '/calls', label: 'Call Log', icon: Phone, show: true },
+    { path: '/leads', label: 'Leads', icon: Users, show: true },
+    { path: '/orders', label: 'Orders', icon: ShoppingCart, show: true },
+    { path: '/master', label: 'Master Data', icon: Settings, show: isAdmin },
+  ];
 
   return (
     <aside
@@ -67,19 +65,9 @@ const Sidebar = () => {
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 px-3">
         <ul className="space-y-1">
-          {navItems.map((item) => {
+          {navItems.filter(item => item.show).map((item) => {
             const isActive = location.pathname === item.path;
             const Icon = item.icon;
-            
-            // Badge logic
-            let badge = null;
-            if (item.path === '/aging' && stats.criticalLeads > 0) {
-              badge = stats.criticalLeads;
-            }
-            if (item.path === '/tasks') {
-              const pendingTasks = stats.followUpsDueToday;
-              if (pendingTasks > 0) badge = pendingTasks;
-            }
             
             return (
               <li key={item.path}>
@@ -94,19 +82,7 @@ const Sidebar = () => {
                 >
                   <Icon className={cn('h-5 w-5 flex-shrink-0', isActive && 'text-sidebar-primary')} />
                   {!collapsed && (
-                    <>
-                      <span className="flex-1">{item.label}</span>
-                      {badge && (
-                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-xs font-semibold text-destructive-foreground">
-                          {badge}
-                        </span>
-                      )}
-                    </>
-                  )}
-                  {collapsed && badge && (
-                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
-                      {badge}
-                    </span>
+                    <span className="flex-1">{item.label}</span>
                   )}
                 </NavLink>
               </li>
@@ -115,10 +91,10 @@ const Sidebar = () => {
         </ul>
       </nav>
 
-      {/* User Info */}
-      {!collapsed && (
-        <div className="border-t border-sidebar-border p-4">
-          <div className="flex items-center gap-3">
+      {/* User Info & Logout */}
+      <div className="border-t border-sidebar-border p-4">
+        {!collapsed && (
+          <div className="flex items-center gap-3 mb-3">
             <div className="w-8 h-8 rounded-full bg-sidebar-accent flex items-center justify-center text-sm font-medium text-sidebar-foreground">
               {currentUser.name.charAt(0)}
             </div>
@@ -131,8 +107,20 @@ const Sidebar = () => {
               </p>
             </div>
           </div>
-        </div>
-      )}
+        )}
+        <Button
+          variant="ghost"
+          size={collapsed ? 'icon' : 'sm'}
+          onClick={logout}
+          className={cn(
+            'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50',
+            collapsed ? 'w-full' : 'w-full justify-start gap-2'
+          )}
+        >
+          <LogOut className="h-4 w-4" />
+          {!collapsed && <span>Logout</span>}
+        </Button>
+      </div>
 
       {/* Collapse Toggle */}
       <Button
