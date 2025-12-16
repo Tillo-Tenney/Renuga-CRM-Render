@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { useAuth } from './AuthContext';
 import {
   CallLog,
   Lead,
@@ -48,13 +49,15 @@ interface CRMContextType {
   completeTask: (id: string) => void;
   
   addShiftNote: (content: string) => ShiftNote;
+  updateShiftNote: (id: string, content: string) => void;
   clearShiftNote: (id: string) => void;
   
   addCustomer: (customer: Omit<Customer, 'id' | 'createdAt' | 'totalOrders' | 'totalValue'>) => Customer;
+  addProduct: (product: Omit<Product, 'id'>) => Product;
+  addUser: (user: Omit<User, 'id'>) => User;
   
   // Stats
   getStats: () => CRMStats;
-  setCurrentUser: (user: User) => void;
 }
 
 interface CRMStats {
@@ -82,15 +85,18 @@ export const useCRM = () => {
 };
 
 export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { currentUser: authUser } = useAuth();
   const [callLogs, setCallLogs] = useState<CallLog[]>(mockCallLogs);
   const [leads, setLeads] = useState<Lead[]>(mockLeads);
   const [orders, setOrders] = useState<Order[]>(mockOrders);
   const [tasks, setTasks] = useState<Task[]>(mockTasks);
   const [shiftNotes, setShiftNotes] = useState<ShiftNote[]>(mockShiftNotes);
-  const [products] = useState<Product[]>(mockProducts);
+  const [products, setProducts] = useState<Product[]>(mockProducts);
   const [customers, setCustomers] = useState<Customer[]>(mockCustomers);
-  const [users] = useState<User[]>(mockUsers);
-  const [currentUser, setCurrentUser] = useState<User>(mockUsers[0]);
+  const [users, setUsers] = useState<User[]>(mockUsers);
+  
+  // Use authenticated user or fallback to first mock user
+  const currentUser = authUser || mockUsers[0];
 
   const generateId = (prefix: string) => {
     const num = Math.floor(Math.random() * 1000) + Date.now() % 1000;
@@ -237,6 +243,12 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return newNote;
   };
 
+  const updateShiftNote = (id: string, content: string) => {
+    setShiftNotes(prev => prev.map(note => 
+      note.id === id ? { ...note, content } : note
+    ));
+  };
+
   const clearShiftNote = (id: string) => {
     setShiftNotes(prev => prev.map(note => 
       note.id === id ? { ...note, isActive: false } : note
@@ -253,6 +265,24 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
     setCustomers(prev => [newCustomer, ...prev]);
     return newCustomer;
+  };
+
+  const addProduct = (productData: Omit<Product, 'id'>): Product => {
+    const newProduct: Product = {
+      ...productData,
+      id: generateId('P'),
+    };
+    setProducts(prev => [newProduct, ...prev]);
+    return newProduct;
+  };
+
+  const addUser = (userData: Omit<User, 'id'>): User => {
+    const newUser: User = {
+      ...userData,
+      id: generateId('U'),
+    };
+    setUsers(prev => [newUser, ...prev]);
+    return newUser;
   };
 
   const getStats = (): CRMStats => {
@@ -342,10 +372,12 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateTask,
         completeTask,
         addShiftNote,
+        updateShiftNote,
         clearShiftNote,
         addCustomer,
+        addProduct,
+        addUser,
         getStats,
-        setCurrentUser,
       }}
     >
       {children}

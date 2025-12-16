@@ -37,17 +37,17 @@ import {
   Package,
   Users,
   User,
-  Edit,
-  Trash2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { Product, Customer, User as UserType } from '@/data/mockData';
+import { Product, User as UserType } from '@/data/mockData';
 
 const MasterDataPage = () => {
-  const { products, customers, users, addCustomer, currentUser } = useCRM();
+  const { products, customers, users, addCustomer, addProduct, addUser, currentUser } = useCRM();
   const [activeTab, setActiveTab] = useState('products');
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Customer Dialog
   const [isCustomerDialogOpen, setIsCustomerDialogOpen] = useState(false);
   const [customerForm, setCustomerForm] = useState({
     name: '',
@@ -56,7 +56,22 @@ const MasterDataPage = () => {
     address: '',
   });
 
-  const isAdmin = currentUser.role === 'Admin';
+  // Product Dialog
+  const [isProductDialogOpen, setIsProductDialogOpen] = useState(false);
+  const [productForm, setProductForm] = useState({
+    name: '',
+    category: 'Roofing Sheet' as Product['category'],
+    unit: '',
+    price: '',
+  });
+
+  // User Dialog
+  const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
+  const [userForm, setUserForm] = useState({
+    name: '',
+    email: '',
+    role: 'Front Desk' as UserType['role'],
+  });
 
   const filteredProducts = products.filter(
     (p) =>
@@ -91,6 +106,46 @@ const MasterDataPage = () => {
     toast.success('Customer added successfully!');
     setIsCustomerDialogOpen(false);
     setCustomerForm({ name: '', mobile: '', email: '', address: '' });
+  };
+
+  const handleAddProduct = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!productForm.name || !productForm.unit || !productForm.price) {
+      toast.error('Name, unit, and price are required');
+      return;
+    }
+    addProduct({
+      name: productForm.name,
+      category: productForm.category,
+      unit: productForm.unit,
+      price: parseFloat(productForm.price),
+      isActive: true,
+    });
+    toast.success('Product added successfully!');
+    setIsProductDialogOpen(false);
+    setProductForm({ name: '', category: 'Roofing Sheet', unit: '', price: '' });
+  };
+
+  const handleAddUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userForm.name || !userForm.email) {
+      toast.error('Name and email are required');
+      return;
+    }
+    // Check if email already exists
+    if (users.some(u => u.email.toLowerCase() === userForm.email.toLowerCase())) {
+      toast.error('User with this email already exists');
+      return;
+    }
+    addUser({
+      name: userForm.name,
+      email: userForm.email,
+      role: userForm.role,
+      isActive: true,
+    });
+    toast.success('User added successfully! Default password: password123');
+    setIsUserDialogOpen(false);
+    setUserForm({ name: '', email: '', role: 'Front Desk' });
   };
 
   return (
@@ -155,65 +210,202 @@ const MasterDataPage = () => {
             />
           </div>
 
-          {activeTab === 'customers' && (
-            <Dialog open={isCustomerDialogOpen} onOpenChange={setIsCustomerDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Add Customer
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add New Customer</DialogTitle>
-                  <DialogDescription>Create a new customer record</DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleAddCustomer} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Name *</Label>
-                    <Input
-                      value={customerForm.name}
-                      onChange={(e) => setCustomerForm({ ...customerForm, name: e.target.value })}
-                      placeholder="Customer name"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Mobile *</Label>
-                    <Input
-                      value={customerForm.mobile}
-                      onChange={(e) => setCustomerForm({ ...customerForm, mobile: e.target.value })}
-                      placeholder="Mobile number"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Email</Label>
-                    <Input
-                      type="email"
-                      value={customerForm.email}
-                      onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })}
-                      placeholder="Email address"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Address</Label>
-                    <Input
-                      value={customerForm.address}
-                      onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })}
-                      placeholder="Full address"
-                    />
-                  </div>
-                  <DialogFooter>
-                    <Button type="button" variant="outline" onClick={() => setIsCustomerDialogOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button type="submit">Add Customer</Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
-          )}
+          <div className="flex gap-2">
+            {activeTab === 'products' && (
+              <Dialog open={isProductDialogOpen} onOpenChange={setIsProductDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Add Product
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add New Product</DialogTitle>
+                    <DialogDescription>Create a new product in the catalog</DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleAddProduct} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Name *</Label>
+                      <Input
+                        value={productForm.name}
+                        onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+                        placeholder="Product name"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Category *</Label>
+                      <Select
+                        value={productForm.category}
+                        onValueChange={(value) => setProductForm({ ...productForm, category: value as Product['category'] })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Roofing Sheet">Roofing Sheet</SelectItem>
+                          <SelectItem value="Tile">Tile</SelectItem>
+                          <SelectItem value="Accessories">Accessories</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Unit *</Label>
+                        <Input
+                          value={productForm.unit}
+                          onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })}
+                          placeholder="e.g., Sq.ft, Piece, Kg"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Price (₹) *</Label>
+                        <Input
+                          type="number"
+                          value={productForm.price}
+                          onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
+                          placeholder="Price per unit"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button type="button" variant="outline" onClick={() => setIsProductDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button type="submit">Add Product</Button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            )}
+
+            {activeTab === 'customers' && (
+              <Dialog open={isCustomerDialogOpen} onOpenChange={setIsCustomerDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Add Customer
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add New Customer</DialogTitle>
+                    <DialogDescription>Create a new customer record</DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleAddCustomer} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Name *</Label>
+                      <Input
+                        value={customerForm.name}
+                        onChange={(e) => setCustomerForm({ ...customerForm, name: e.target.value })}
+                        placeholder="Customer name"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Mobile *</Label>
+                      <Input
+                        value={customerForm.mobile}
+                        onChange={(e) => setCustomerForm({ ...customerForm, mobile: e.target.value })}
+                        placeholder="Mobile number"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Email</Label>
+                      <Input
+                        type="email"
+                        value={customerForm.email}
+                        onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })}
+                        placeholder="Email address"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Address</Label>
+                      <Input
+                        value={customerForm.address}
+                        onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })}
+                        placeholder="Full address"
+                      />
+                    </div>
+                    <DialogFooter>
+                      <Button type="button" variant="outline" onClick={() => setIsCustomerDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button type="submit">Add Customer</Button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            )}
+
+            {activeTab === 'users' && (
+              <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Add User
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add New User</DialogTitle>
+                    <DialogDescription>Create a new user account</DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleAddUser} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Name *</Label>
+                      <Input
+                        value={userForm.name}
+                        onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+                        placeholder="Full name"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Email *</Label>
+                      <Input
+                        type="email"
+                        value={userForm.email}
+                        onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                        placeholder="Email address"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Role *</Label>
+                      <Select
+                        value={userForm.role}
+                        onValueChange={(value) => setUserForm({ ...userForm, role: value as UserType['role'] })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Front Desk">Front Desk</SelectItem>
+                          <SelectItem value="Sales">Sales</SelectItem>
+                          <SelectItem value="Operations">Operations</SelectItem>
+                          <SelectItem value="Admin">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="p-3 bg-muted rounded-lg text-sm text-muted-foreground">
+                      Default password will be set to: <strong>password123</strong>
+                    </div>
+                    <DialogFooter>
+                      <Button type="button" variant="outline" onClick={() => setIsUserDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button type="submit">Add User</Button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            )}
+          </div>
         </div>
 
         {/* Tabs */}
