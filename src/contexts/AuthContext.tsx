@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, mockUsers } from '@/data/mockData';
+import { User } from '@/data/mockData';
+import { authApi } from '@/services/api';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -10,14 +11,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// Mock credentials - In production, this would be handled by a backend
-const MOCK_CREDENTIALS: Record<string, string> = {
-  'priya@renuga.com': 'password123',
-  'ravi@renuga.com': 'password123',
-  'muthu@renuga.com': 'password123',
-  'admin@renuga.com': 'admin123',
-};
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -32,44 +25,67 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session
-    const storedUserId = localStorage.getItem('crm_user_id');
-    if (storedUserId) {
-      const user = mockUsers.find(u => u.id === storedUserId);
-      if (user) {
-        setCurrentUser(user);
+    // Check for existing session by validating token
+    const validateSession = async () => {
+      const token = localStorage.getItem('crm_token');
+      if (token) {
+        try {
+          const response = await authApi.validateToken();
+          if (response.valid && response.user) {
+            setCurrentUser({
+              id: response.user.id,
+              name: response.user.name,
+              email: response.user.email,
+              role: response.user.role as User['role'],
+              isActive: response.user.isActive,
+            });
+          }
+        } catch (error) {
+          // Token invalid, clear it
+          localStorage.removeItem('crm_token');
+          localStorage.removeItem('crm_user_id');
+        }
       }
-    }
-    setIsLoading(false);
+      setIsLoading(false);
+    };
+
+    validateSession();
   }, []);
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    const user = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-    
-    if (!user) {
-      return { success: false, error: 'User not found' };
+    try {
+      const response = await authApi.login(email, password);
+      
+      if (response.success && response.user) {
+        const user: User = {
+          id: response.user.id,
+          name: response.user.name,
+          email: response.user.email,
+          role: response.user.role as User['role'],
+          isActive: response.user.isActive,
+        };
+        
+        setCurrentUser(user);
+        localStorage.setItem('crm_user_id', user.id);
+        return { success: true };
+      }
+      
+      return { success: false, error: 'Login failed' };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Login failed' 
+      };
     }
-
-    if (!user.isActive) {
-      return { success: false, error: 'User account is inactive' };
-    }
-
-    const expectedPassword = MOCK_CREDENTIALS[user.email];
-    if (password !== expectedPassword) {
-      return { success: false, error: 'Invalid password' };
-    }
-
-    setCurrentUser(user);
-    localStorage.setItem('crm_user_id', user.id);
-    return { success: true };
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await authApi.logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
     setCurrentUser(null);
-    localStorage.removeItem('crm_user_id');
   };
 
   return (
