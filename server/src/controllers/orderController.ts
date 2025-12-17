@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import pool from '../config/database.js';
+import { validateAndConvertFields } from '../utils/fieldValidator.js';
 
 export const getAllOrders = async (req: AuthRequest, res: Response) => {
   try {
@@ -140,11 +141,12 @@ export const updateOrder = async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const updates = req.body;
 
-    const fields = Object.keys(updates).filter(key => key !== 'id' && key !== 'products');
-    const values = fields.map(field => updates[field]);
-    const setClause = fields.map((field, idx) => 
-      `${field.replace(/([A-Z])/g, '_$1').toLowerCase()} = $${idx + 2}`
-    ).join(', ');
+    // Validate and convert fields safely
+    const { values, setClause } = validateAndConvertFields('orders', updates);
+
+    if (!setClause) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
 
     const { rows } = await pool.query(
       `UPDATE orders SET ${setClause}, updated_at = CURRENT_TIMESTAMP 

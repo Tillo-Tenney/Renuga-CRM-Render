@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import pool from '../config/database.js';
+import { validateAndConvertFields } from '../utils/fieldValidator.js';
 
 // Tasks, Customers, Users, Shift Notes, Remark Logs
 
@@ -37,11 +38,12 @@ export const updateTask = async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const updates = req.body;
 
-    const fields = Object.keys(updates).filter(key => key !== 'id');
-    const values = fields.map(field => updates[field]);
-    const setClause = fields.map((field, idx) => 
-      `${field.replace(/([A-Z])/g, '_$1').toLowerCase()} = $${idx + 2}`
-    ).join(', ');
+    // Validate and convert fields safely
+    const { values, setClause } = validateAndConvertFields('tasks', updates);
+
+    if (!setClause) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
 
     const { rows } = await pool.query(
       `UPDATE tasks SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
@@ -108,11 +110,12 @@ export const updateCustomer = async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const updates = req.body;
 
-    const fields = Object.keys(updates).filter(key => key !== 'id');
-    const values = fields.map(field => updates[field]);
-    const setClause = fields.map((field, idx) => 
-      `${field.replace(/([A-Z])/g, '_$1').toLowerCase()} = $${idx + 2}`
-    ).join(', ');
+    // Validate and convert fields safely
+    const { values, setClause } = validateAndConvertFields('customers', updates);
+
+    if (!setClause) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
 
     const { rows } = await pool.query(
       `UPDATE customers SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,

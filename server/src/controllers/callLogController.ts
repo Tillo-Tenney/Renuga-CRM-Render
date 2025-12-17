@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.js';
 import pool from '../config/database.js';
+import { validateAndConvertFields } from '../utils/fieldValidator.js';
 
 export const getAllCallLogs = async (req: AuthRequest, res: Response) => {
   try {
@@ -68,12 +69,12 @@ export const updateCallLog = async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const updates = req.body;
 
-    // Build dynamic update query
-    const fields = Object.keys(updates).filter(key => key !== 'id');
-    const values = fields.map(field => updates[field]);
-    const setClause = fields.map((field, idx) => 
-      `${field.replace(/([A-Z])/g, '_$1').toLowerCase()} = $${idx + 2}`
-    ).join(', ');
+    // Validate and convert fields safely
+    const { values, setClause } = validateAndConvertFields('callLogs', updates);
+
+    if (!setClause) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
 
     const { rows } = await pool.query(
       `UPDATE call_logs SET ${setClause}, updated_at = CURRENT_TIMESTAMP 
