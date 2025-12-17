@@ -27,10 +27,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { StatusBadge } from '@/components/ui/status-badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Search,
   Package,
@@ -42,10 +44,14 @@ import {
   Calendar,
   DollarSign,
   FileText,
+  Plus,
+  Trash2,
+  History,
+  Edit,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { Order } from '@/data/mockData';
+import { Order, OrderProduct } from '@/data/mockData';
 import { cn } from '@/lib/utils';
 
 const orderStatuses: Order['status'][] = [
@@ -85,10 +91,33 @@ const getStatusIcon = (status: Order['status'], isActive: boolean, isCompleted: 
 };
 
 const OrdersPage = () => {
-  const { orders, updateOrder } = useCRM();
+  const { orders, addOrder, updateOrder, products, users, customers, currentUser, addRemarkLog, getRemarkLogs } = useCRM();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  
+  // New Order Dialog
+  const [isNewOrderOpen, setIsNewOrderOpen] = useState(false);
+  const [newOrderForm, setNewOrderForm] = useState({
+    customerName: '',
+    mobile: '',
+    deliveryAddress: '',
+    expectedDeliveryDate: '',
+    remarks: '',
+  });
+  const [orderProducts, setOrderProducts] = useState<OrderProduct[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState('');
+  const [productQuantity, setProductQuantity] = useState('');
+
+  // Edit Order
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editOrderForm, setEditOrderForm] = useState<Partial<Order>>({});
+  const [editOrderProducts, setEditOrderProducts] = useState<OrderProduct[]>([]);
+  const [originalProducts, setOriginalProducts] = useState<OrderProduct[]>([]);
+
+  // Remark History
+  const [isRemarkHistoryOpen, setIsRemarkHistoryOpen] = useState(false);
+  const [remarkHistoryOrderId, setRemarkHistoryOrderId] = useState('');
 
   const filteredOrders = orders.filter(
     (order) =>
@@ -97,19 +126,189 @@ const OrdersPage = () => {
       order.id.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleStatusChange = (orderId: string, newStatus: Order['status']) => {
-    const updateData: Partial<Order> = { status: newStatus };
-    if (newStatus === 'Delivered') {
-      updateData.actualDeliveryDate = new Date();
+  const handleMobileChange = (mobile: string) => {
+    setNewOrderForm({ ...newOrderForm, mobile });
+    const customer = customers.find(c => c.mobile === mobile);
+    if (customer) {
+      setNewOrderForm(prev => ({ 
+        ...prev, 
+        mobile, 
+        customerName: customer.name,
+        deliveryAddress: customer.address || '',
+      }));
     }
-    updateOrder(orderId, updateData);
-    toast.success(`Order status updated to ${newStatus}`);
+  };
+
+  const addProductToOrder = (isEdit = false) => {
+    if (!selectedProductId || !productQuantity) {
+      toast.error('Select product and quantity');
+      return;
+    }
+    const product = products.find(p => p.id === selectedProductId);
+    if (!product) return;
+
+    const quantity = parseFloat(productQuantity);
+    const totalPrice = quantity * product.price;
+
+    const newProduct: OrderProduct = {
+      productId: product.id,
+      productName: product.name,
+      quantity,
+      unit: product.unit,
+      unitPrice: product.price,
+      totalPrice,
+    };
+
+    if (isEdit) {
+      setEditOrderProducts(prev => [...prev, newProduct]);
+    } else {
+      setOrderProducts(prev => [...prev, newProduct]);
+    }
+    setSelectedProductId('');
+    setProductQuantity('');
+  };
+
+  const removeProductFromOrder = (index: number, isEdit = false) => {
+    if (isEdit) {
+      setEditOrderProducts(prev => prev.filter((_, i) => i !== index));
+    } else {
+      setOrderProducts(prev => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const resetNewOrderForm = () => {
+    setNewOrderForm({
+      customerName: '',
+      mobile: '',
+      deliveryAddress: '',
+      expectedDeliveryDate: '',
+      remarks: '',
+    });
+    setOrderProducts([]);
+    setSelectedProductId('');
+    setProductQuantity('');
+  };
+
+  const handleCreateOrder = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!newOrderForm.customerName || !newOrderForm.mobile || !newOrderForm.deliveryAddress || !newOrderForm.expectedDeliveryDate) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+    if (!newOrderForm.remarks.trim()) {
+      toast.error('Remark is mandatory');
+      return;
+    }
+    if (orderProducts.length === 0) {
+      toast.error('Add at least one product to the order');
+      return;
+    }
+
+    const totalAmount = orderProducts.reduce((sum, p) => sum + p.totalPrice, 0);
+    
+    addOrder({
+      customerName: newOrderForm.customerName,
+      mobile: newOrderForm.mobile,
+      deliveryAddress: newOrderForm.deliveryAddress,
+      products: orderProducts,
+      totalAmount,
+      status: 'Order Received',
+      orderDate: new Date(),
+      expectedDeliveryDate: new Date(newOrderForm.expectedDeliveryDate),
+      paymentStatus: 'Pending',
+      assignedTo: users.find(u => u.role === 'Operations')?.name || currentUser.name,
+      remarks: newOrderForm.remarks,
+    });
+
+    toast.success('Order created successfully!');
+    setIsNewOrderOpen(false);
+    resetNewOrderForm();
   };
 
   const openOrderDetail = (order: Order) => {
     setSelectedOrder(order);
+    setIsEditMode(false);
     setIsDetailOpen(true);
   };
+
+  const startEditOrder = () => {
+    if (!selectedOrder) return;
+    setIsEditMode(true);
+    setEditOrderForm({
+      customerName: selectedOrder.customerName,
+      mobile: selectedOrder.mobile,
+      deliveryAddress: selectedOrder.deliveryAddress,
+      status: selectedOrder.status,
+      paymentStatus: selectedOrder.paymentStatus,
+      expectedDeliveryDate: selectedOrder.expectedDeliveryDate,
+      remarks: '',
+    });
+    setEditOrderProducts([...selectedOrder.products]);
+    setOriginalProducts([...selectedOrder.products]);
+  };
+
+  const handleUpdateOrder = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOrder) return;
+    
+    if (!editOrderForm.remarks?.trim()) {
+      toast.error('Remark is mandatory');
+      return;
+    }
+    if (editOrderProducts.length === 0) {
+      toast.error('Order must have at least one product');
+      return;
+    }
+
+    const totalAmount = editOrderProducts.reduce((sum, p) => sum + p.totalPrice, 0);
+    const updateData: Partial<Order> = {
+      ...editOrderForm,
+      products: editOrderProducts,
+      totalAmount,
+    };
+
+    if (editOrderForm.status === 'Delivered') {
+      updateData.actualDeliveryDate = new Date();
+    }
+
+    updateOrder(selectedOrder.id, updateData, originalProducts);
+    addRemarkLog('order', selectedOrder.id, editOrderForm.remarks || '');
+    
+    setSelectedOrder({ ...selectedOrder, ...updateData, products: editOrderProducts, totalAmount });
+    toast.success('Order updated successfully!');
+    setIsEditMode(false);
+  };
+
+  const handleQuickStatusChange = (newStatus: Order['status']) => {
+    if (!selectedOrder) return;
+    
+    const updateData: Partial<Order> = { status: newStatus };
+    if (newStatus === 'Delivered') {
+      updateData.actualDeliveryDate = new Date();
+    }
+    updateOrder(selectedOrder.id, updateData);
+    addRemarkLog('order', selectedOrder.id, `Status changed to ${newStatus}`);
+    setSelectedOrder({ ...selectedOrder, ...updateData });
+    toast.success(`Order status updated to ${newStatus}`);
+  };
+
+  const handlePaymentStatusChange = (newStatus: Order['paymentStatus']) => {
+    if (!selectedOrder) return;
+    updateOrder(selectedOrder.id, { paymentStatus: newStatus });
+    addRemarkLog('order', selectedOrder.id, `Payment status changed to ${newStatus}`);
+    setSelectedOrder({ ...selectedOrder, paymentStatus: newStatus });
+    toast.success('Payment status updated');
+  };
+
+  const openRemarkHistory = (orderId: string) => {
+    setRemarkHistoryOrderId(orderId);
+    setIsRemarkHistoryOpen(true);
+  };
+
+  const remarkHistory = getRemarkLogs('order', remarkHistoryOrderId || (selectedOrder?.id || ''));
+  const totalNewOrderAmount = orderProducts.reduce((sum, p) => sum + p.totalPrice, 0);
+  const totalEditOrderAmount = editOrderProducts.reduce((sum, p) => sum + p.totalPrice, 0);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -131,16 +330,159 @@ const OrdersPage = () => {
           })}
         </div>
 
-        {/* Search Bar */}
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search by name, mobile or order ID..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9"
-          />
+        {/* Search Bar & Actions */}
+        <div className="flex flex-col sm:flex-row gap-4 justify-between">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search by name, mobile or order ID..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Button onClick={() => setIsNewOrderOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Make New Order
+          </Button>
         </div>
+
+        {/* New Order Dialog */}
+        <Dialog open={isNewOrderOpen} onOpenChange={(open) => { if (!open) resetNewOrderForm(); setIsNewOrderOpen(open); }}>
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5 text-primary" />
+                Create New Order
+              </DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCreateOrder} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Mobile Number *</Label>
+                  <Input
+                    value={newOrderForm.mobile}
+                    onChange={(e) => handleMobileChange(e.target.value)}
+                    placeholder="Enter mobile"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Customer Name *</Label>
+                  <Input
+                    value={newOrderForm.customerName}
+                    onChange={(e) => setNewOrderForm({ ...newOrderForm, customerName: e.target.value })}
+                    placeholder="Enter name"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Delivery Address *</Label>
+                  <Input
+                    value={newOrderForm.deliveryAddress}
+                    onChange={(e) => setNewOrderForm({ ...newOrderForm, deliveryAddress: e.target.value })}
+                    placeholder="Full delivery address"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Expected Delivery Date *</Label>
+                  <Input
+                    type="date"
+                    value={newOrderForm.expectedDeliveryDate}
+                    onChange={(e) => setNewOrderForm({ ...newOrderForm, expectedDeliveryDate: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Add Products */}
+              <div className="space-y-2">
+                <Label>Add Products</Label>
+                <div className="flex gap-2">
+                  <Select value={selectedProductId} onValueChange={setSelectedProductId}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Select product" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products.filter(p => p.status !== 'Out of Stock').map((product) => (
+                        <SelectItem key={product.id} value={product.id}>
+                          {product.name} (₹{product.price}/{product.unit}) - Avl: {product.availableQuantity}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    placeholder="Qty"
+                    value={productQuantity}
+                    onChange={(e) => setProductQuantity(e.target.value)}
+                    className="w-24"
+                  />
+                  <Button type="button" variant="outline" onClick={() => addProductToOrder(false)}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Order Products List */}
+              {orderProducts.length > 0 && (
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Product</TableHead>
+                        <TableHead className="text-right">Qty</TableHead>
+                        <TableHead className="text-right">Price</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {orderProducts.map((product, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{product.productName}</TableCell>
+                          <TableCell className="text-right">{product.quantity} {product.unit}</TableCell>
+                          <TableCell className="text-right">₹{product.unitPrice}</TableCell>
+                          <TableCell className="text-right">₹{product.totalPrice.toLocaleString()}</TableCell>
+                          <TableCell>
+                            <Button type="button" variant="ghost" size="icon" onClick={() => removeProductFromOrder(index, false)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-right font-medium">Total</TableCell>
+                        <TableCell className="text-right font-bold">₹{totalNewOrderAmount.toLocaleString()}</TableCell>
+                        <TableCell></TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>Remark * (Mandatory)</Label>
+                <Textarea
+                  value={newOrderForm.remarks}
+                  onChange={(e) => setNewOrderForm({ ...newOrderForm, remarks: e.target.value })}
+                  placeholder="Add order notes..."
+                  required
+                />
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => { resetNewOrderForm(); setIsNewOrderOpen(false); }}>
+                  Cancel
+                </Button>
+                <Button type="submit">Create Order</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         {/* Orders Table */}
         <div className="rounded-lg border bg-card">
@@ -226,9 +568,9 @@ const OrdersPage = () => {
         </div>
 
         {/* Order Detail Dialog */}
-        <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-          <DialogContent className="sm:max-w-2xl">
-            {selectedOrder && (
+        <Dialog open={isDetailOpen} onOpenChange={(open) => { if (!open) { setIsEditMode(false); } setIsDetailOpen(open); }}>
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+            {selectedOrder && !isEditMode && (
               <>
                 <DialogHeader>
                   <div className="flex items-center justify-between">
@@ -354,22 +696,19 @@ const OrdersPage = () => {
                     </div>
                   </div>
 
-                  {/* Update Status */}
+                  {/* Quick Status Update */}
                   <div className="space-y-3">
-                    <h4 className="font-medium text-sm text-muted-foreground">Update Status</h4>
+                    <h4 className="font-medium text-sm text-muted-foreground">Quick Update</h4>
                     <div className="flex gap-4">
                       <Select
                         value={selectedOrder.status}
-                        onValueChange={(value) => {
-                          handleStatusChange(selectedOrder.id, value as Order['status']);
-                          setSelectedOrder({ ...selectedOrder, status: value as Order['status'] });
-                        }}
+                        onValueChange={(value) => handleQuickStatusChange(value as Order['status'])}
                       >
                         <SelectTrigger className="w-48">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {orderStatuses.map((status) => (
+                          {[...orderStatuses, 'Cancelled' as const].map((status) => (
                             <SelectItem key={status} value={status}>
                               {status}
                             </SelectItem>
@@ -378,11 +717,7 @@ const OrdersPage = () => {
                       </Select>
                       <Select
                         value={selectedOrder.paymentStatus}
-                        onValueChange={(value) => {
-                          updateOrder(selectedOrder.id, { paymentStatus: value as Order['paymentStatus'] });
-                          setSelectedOrder({ ...selectedOrder, paymentStatus: value as Order['paymentStatus'] });
-                          toast.success('Payment status updated');
-                        }}
+                        onValueChange={(value) => handlePaymentStatusChange(value as Order['paymentStatus'])}
                       >
                         <SelectTrigger className="w-40">
                           <SelectValue />
@@ -397,21 +732,199 @@ const OrdersPage = () => {
                   </div>
 
                   {/* Remarks */}
-                  {selectedOrder.remarks && (
-                    <div className="space-y-2">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
                       <h4 className="font-medium text-sm text-muted-foreground">Remarks</h4>
-                      <p className="text-sm bg-muted p-3 rounded-lg">{selectedOrder.remarks}</p>
+                      <Button variant="ghost" size="sm" onClick={() => openRemarkHistory(selectedOrder.id)} className="gap-1">
+                        <History className="h-4 w-4" />
+                        View History
+                      </Button>
                     </div>
-                  )}
+                    {selectedOrder.remarks && (
+                      <p className="text-sm bg-muted p-3 rounded-lg">{selectedOrder.remarks}</p>
+                    )}
+                  </div>
                 </div>
 
-                <DialogFooter>
+                <DialogFooter className="gap-2">
                   <Button variant="outline" onClick={() => setIsDetailOpen(false)}>
                     Close
+                  </Button>
+                  <Button variant="outline" onClick={startEditOrder} className="gap-2">
+                    <Edit className="h-4 w-4" />
+                    Edit Order
                   </Button>
                 </DialogFooter>
               </>
             )}
+
+            {/* Edit Mode */}
+            {selectedOrder && isEditMode && (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Edit Order - {selectedOrder.id}</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleUpdateOrder} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Customer Name</Label>
+                      <Input
+                        value={editOrderForm.customerName}
+                        onChange={(e) => setEditOrderForm({ ...editOrderForm, customerName: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Mobile</Label>
+                      <Input
+                        value={editOrderForm.mobile}
+                        onChange={(e) => setEditOrderForm({ ...editOrderForm, mobile: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Delivery Address</Label>
+                    <Input
+                      value={editOrderForm.deliveryAddress}
+                      onChange={(e) => setEditOrderForm({ ...editOrderForm, deliveryAddress: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Status</Label>
+                      <Select
+                        value={editOrderForm.status}
+                        onValueChange={(value) => setEditOrderForm({ ...editOrderForm, status: value as Order['status'] })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[...orderStatuses, 'Cancelled' as const].map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {status}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Payment Status</Label>
+                      <Select
+                        value={editOrderForm.paymentStatus}
+                        onValueChange={(value) => setEditOrderForm({ ...editOrderForm, paymentStatus: value as Order['paymentStatus'] })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Pending">Pending</SelectItem>
+                          <SelectItem value="Partial">Partial</SelectItem>
+                          <SelectItem value="Completed">Completed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Edit Products */}
+                  <div className="space-y-2">
+                    <Label>Products</Label>
+                    <div className="flex gap-2">
+                      <Select value={selectedProductId} onValueChange={setSelectedProductId}>
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Add product" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {products.filter(p => p.status !== 'Out of Stock').map((product) => (
+                            <SelectItem key={product.id} value={product.id}>
+                              {product.name} (₹{product.price}/{product.unit})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        placeholder="Qty"
+                        value={productQuantity}
+                        onChange={(e) => setProductQuantity(e.target.value)}
+                        className="w-24"
+                      />
+                      <Button type="button" variant="outline" onClick={() => addProductToOrder(true)}>
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {editOrderProducts.length > 0 && (
+                      <div className="border rounded-lg">
+                        <Table>
+                          <TableBody>
+                            {editOrderProducts.map((product, index) => (
+                              <TableRow key={index}>
+                                <TableCell className="py-2">{product.productName}</TableCell>
+                                <TableCell className="py-2 text-right">{product.quantity} {product.unit}</TableCell>
+                                <TableCell className="py-2 text-right">₹{product.totalPrice.toLocaleString()}</TableCell>
+                                <TableCell className="py-2">
+                                  <Button type="button" variant="ghost" size="icon" onClick={() => removeProductFromOrder(index, true)}>
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            <TableRow>
+                              <TableCell colSpan={2} className="text-right font-medium py-2">Total</TableCell>
+                              <TableCell className="text-right font-bold py-2">₹{totalEditOrderAmount.toLocaleString()}</TableCell>
+                              <TableCell></TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Remark * (Mandatory)</Label>
+                    <Textarea
+                      value={editOrderForm.remarks || ''}
+                      onChange={(e) => setEditOrderForm({ ...editOrderForm, remarks: e.target.value })}
+                      placeholder="Add update notes..."
+                      required
+                    />
+                  </div>
+
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setIsEditMode(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit">Save Changes</Button>
+                  </DialogFooter>
+                </form>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Remark History Dialog */}
+        <Dialog open={isRemarkHistoryOpen} onOpenChange={setIsRemarkHistoryOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                Remark History
+              </DialogTitle>
+            </DialogHeader>
+            <ScrollArea className="max-h-80">
+              <div className="space-y-3">
+                {remarkHistory.length > 0 ? remarkHistory.map((log) => (
+                  <div key={log.id} className="p-3 bg-muted rounded-lg">
+                    <p className="text-sm">{log.remark}</p>
+                    <div className="flex justify-between items-center mt-2 text-xs text-muted-foreground">
+                      <span>{log.createdBy}</span>
+                      <span>{format(new Date(log.createdAt), 'dd MMM yyyy HH:mm')}</span>
+                    </div>
+                  </div>
+                )) : (
+                  <p className="text-center text-muted-foreground py-4">No remarks found</p>
+                )}
+              </div>
+            </ScrollArea>
           </DialogContent>
         </Dialog>
       </div>
