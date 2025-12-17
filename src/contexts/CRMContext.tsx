@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import {
   CallLog,
@@ -24,6 +24,18 @@ import {
   calculateAgingDays,
   calculateProductStatus,
 } from '@/data/mockData';
+import {
+  callLogsApi,
+  leadsApi,
+  ordersApi,
+  productsApi,
+  tasksApi,
+  customersApi,
+  usersApi,
+  shiftNotesApi,
+  remarkLogsApi,
+} from '@/services/api';
+import { toCamelCase, parseDates } from '@/utils/dataTransform';
 
 interface CRMContextType {
   // Data
@@ -103,7 +115,7 @@ export const useCRM = () => {
 };
 
 export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { currentUser: authUser } = useAuth();
+  const { currentUser: authUser, isAuthenticated } = useAuth();
   const [callLogs, setCallLogs] = useState<CallLog[]>(mockCallLogs);
   const [leads, setLeads] = useState<Lead[]>(mockLeads);
   const [orders, setOrders] = useState<Order[]>(mockOrders);
@@ -113,9 +125,60 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [customers, setCustomers] = useState<Customer[]>(mockCustomers);
   const [users, setUsers] = useState<User[]>(mockUsers);
   const [remarkLogs, setRemarkLogs] = useState<RemarkLog[]>(mockRemarkLogs);
+  const [isLoading, setIsLoading] = useState(false);
   
   // Use authenticated user or fallback to first mock user
   const currentUser = authUser || mockUsers[0];
+
+  // Fetch data from API when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadDataFromAPI();
+    }
+  }, [isAuthenticated]);
+
+  const loadDataFromAPI = async () => {
+    setIsLoading(true);
+    try {
+      // Fetch all data from API
+      const [
+        callLogsData,
+        leadsData,
+        ordersData,
+        tasksData,
+        shiftNotesData,
+        productsData,
+        customersData,
+        usersData,
+        remarkLogsData,
+      ] = await Promise.all([
+        callLogsApi.getAll().catch(() => mockCallLogs),
+        leadsApi.getAll().catch(() => mockLeads),
+        ordersApi.getAll().catch(() => mockOrders),
+        tasksApi.getAll().catch(() => mockTasks),
+        shiftNotesApi.getAll().catch(() => mockShiftNotes),
+        productsApi.getAll().catch(() => mockProducts),
+        customersApi.getAll().catch(() => mockCustomers),
+        usersApi.getAll().catch(() => mockUsers),
+        remarkLogsApi.getAll().catch(() => mockRemarkLogs),
+      ]);
+
+      // Transform and parse dates
+      setCallLogs(parseDates(toCamelCase(callLogsData), ['callDate', 'followUpDate']));
+      setLeads(parseDates(toCamelCase(leadsData), ['createdDate', 'lastFollowUp', 'nextFollowUp']));
+      setOrders(parseDates(toCamelCase(ordersData), ['orderDate', 'expectedDeliveryDate', 'actualDeliveryDate']));
+      setTasks(parseDates(toCamelCase(tasksData), ['dueDate', 'createdAt']));
+      setShiftNotes(parseDates(toCamelCase(shiftNotesData), ['createdAt']));
+      setProducts(toCamelCase(productsData));
+      setCustomers(parseDates(toCamelCase(customersData), ['createdAt']));
+      setUsers(toCamelCase(usersData));
+      setRemarkLogs(parseDates(toCamelCase(remarkLogsData), ['createdAt']));
+    } catch (error) {
+      console.error('Error loading data from API:', error);
+      // Keep using mock data on error
+    }
+    setIsLoading(false);
+  };
 
   const generateId = (prefix: string) => {
     const num = Math.floor(Math.random() * 1000) + Date.now() % 1000;
@@ -127,7 +190,18 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       ...callLogData,
       id: generateId('CALL'),
     };
+    
+    // Optimistically update UI
     setCallLogs(prev => [newCallLog, ...prev]);
+    
+    // Sync with API if authenticated
+    if (isAuthenticated) {
+      callLogsApi.create(newCallLog).catch(error => {
+        console.error('Failed to create call log:', error);
+        // Rollback on error
+        setCallLogs(prev => prev.filter(log => log.id !== newCallLog.id));
+      });
+    }
     
     // Auto-create task if follow-up
     if (callLogData.nextAction === 'Follow-up' && callLogData.followUpDate) {
@@ -155,6 +229,14 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCallLogs(prev => prev.map(log => 
       log.id === id ? { ...log, ...data } : log
     ));
+    
+    // Sync with API if authenticated
+    if (isAuthenticated) {
+      callLogsApi.update(id, data).catch(error => {
+        console.error('Failed to update call log:', error);
+        // Could implement rollback here
+      });
+    }
   };
 
   const addLead = (leadData: Omit<Lead, 'id' | 'agingDays' | 'agingBucket'>): Lead => {
@@ -166,6 +248,14 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       agingBucket: getAgingBucket(agingDays),
     };
     setLeads(prev => [newLead, ...prev]);
+    
+    // Sync with API if authenticated
+    if (isAuthenticated) {
+      leadsApi.create(newLead).catch(error => {
+        console.error('Failed to create lead:', error);
+        setLeads(prev => prev.filter(lead => lead.id !== newLead.id));
+      });
+    }
     
     // Add remark log
     if (leadData.remarks) {
@@ -185,6 +275,13 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       return lead;
     }));
+    
+    // Sync with API if authenticated
+    if (isAuthenticated) {
+      leadsApi.update(id, data).catch(error => {
+        console.error('Failed to update lead:', error);
+      });
+    }
   };
 
   const convertLeadToOrder = (leadId: string, orderData: Partial<Order>): Order => {
@@ -223,6 +320,14 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
     setOrders(prev => [newOrder, ...prev]);
     
+    // Sync with API if authenticated
+    if (isAuthenticated) {
+      ordersApi.create(newOrder).catch(error => {
+        console.error('Failed to create order:', error);
+        setOrders(prev => prev.filter(order => order.id !== newOrder.id));
+      });
+    }
+    
     // Add remark log
     if (orderData.remarks) {
       addRemarkLog('order', newOrder.id, orderData.remarks);
@@ -259,6 +364,13 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       return order;
     }));
+    
+    // Sync with API if authenticated
+    if (isAuthenticated) {
+      ordersApi.update(id, data).catch(error => {
+        console.error('Failed to update order:', error);
+      });
+    }
   };
 
   const addTask = (taskData: Omit<Task, 'id' | 'createdAt'>): Task => {
@@ -268,6 +380,15 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       createdAt: new Date(),
     };
     setTasks(prev => [newTask, ...prev]);
+    
+    // Sync with API if authenticated
+    if (isAuthenticated) {
+      tasksApi.create(newTask).catch(error => {
+        console.error('Failed to create task:', error);
+        setTasks(prev => prev.filter(task => task.id !== newTask.id));
+      });
+    }
+    
     return newTask;
   };
 
@@ -275,6 +396,13 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setTasks(prev => prev.map(task => 
       task.id === id ? { ...task, ...data } : task
     ));
+    
+    // Sync with API if authenticated
+    if (isAuthenticated) {
+      tasksApi.update(id, data).catch(error => {
+        console.error('Failed to update task:', error);
+      });
+    }
   };
 
   const completeTask = (id: string) => {
@@ -293,6 +421,24 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       isActive: true,
     };
     setShiftNotes(prev => [newNote, ...prev]);
+    
+    // Sync with API if authenticated
+    if (isAuthenticated) {
+      // First, deactivate all previous notes
+      shiftNotesApi.getAll().then(notes => {
+        notes.forEach(note => {
+          if (note.isActive) {
+            shiftNotesApi.update(note.id, { ...note, isActive: false, content: note.content }).catch(console.error);
+          }
+        });
+      }).catch(console.error);
+      
+      // Create new note
+      shiftNotesApi.create(newNote).catch(error => {
+        console.error('Failed to create shift note:', error);
+      });
+    }
+    
     return newNote;
   };
 
@@ -300,6 +446,16 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setShiftNotes(prev => prev.map(note => 
       note.id === id ? { ...note, content } : note
     ));
+    
+    // Sync with API if authenticated
+    if (isAuthenticated) {
+      const note = shiftNotes.find(n => n.id === id);
+      if (note) {
+        shiftNotesApi.update(id, { content, isActive: note.isActive }).catch(error => {
+          console.error('Failed to update shift note:', error);
+        });
+      }
+    }
   };
 
   const clearShiftNote = (id: string) => {
@@ -317,6 +473,15 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       totalValue: 0,
     };
     setCustomers(prev => [newCustomer, ...prev]);
+    
+    // Sync with API if authenticated
+    if (isAuthenticated) {
+      customersApi.create(newCustomer).catch(error => {
+        console.error('Failed to create customer:', error);
+        setCustomers(prev => prev.filter(c => c.id !== newCustomer.id));
+      });
+    }
+    
     return newCustomer;
   };
 
@@ -324,6 +489,13 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCustomers(prev => prev.map(customer => 
       customer.id === id ? { ...customer, ...data } : customer
     ));
+    
+    // Sync with API if authenticated
+    if (isAuthenticated) {
+      customersApi.update(id, data).catch(error => {
+        console.error('Failed to update customer:', error);
+      });
+    }
   };
 
   const addProduct = (productData: Omit<Product, 'id' | 'status'>): Product => {
@@ -334,6 +506,15 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       status,
     };
     setProducts(prev => [newProduct, ...prev]);
+    
+    // Sync with API if authenticated
+    if (isAuthenticated) {
+      productsApi.create(newProduct).catch(error => {
+        console.error('Failed to create product:', error);
+        setProducts(prev => prev.filter(p => p.id !== newProduct.id));
+      });
+    }
+    
     return newProduct;
   };
 
@@ -350,6 +531,13 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       return product;
     }));
+    
+    // Sync with API if authenticated
+    if (isAuthenticated) {
+      productsApi.update(id, data).catch(error => {
+        console.error('Failed to update product:', error);
+      });
+    }
   };
 
   const updateProductQuantity = (productId: string, quantityChange: number) => {
@@ -391,6 +579,14 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       createdAt: new Date(),
     };
     setRemarkLogs(prev => [newRemark, ...prev]);
+    
+    // Sync with API if authenticated
+    if (isAuthenticated) {
+      remarkLogsApi.create(newRemark).catch(error => {
+        console.error('Failed to create remark log:', error);
+      });
+    }
+    
     return newRemark;
   };
 
