@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import pool from '../config/database.js';
 
 export const login = async (req: Request, res: Response) => {
@@ -35,12 +35,11 @@ export const login = async (req: Request, res: Response) => {
 
     // Generate JWT token
     const secret = process.env.JWT_SECRET || 'default-secret-key';
-    const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
 
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       secret,
-      { expiresIn }
+      { expiresIn: '7d' }
     );
 
     res.json({
