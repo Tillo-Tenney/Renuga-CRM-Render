@@ -49,10 +49,19 @@ cp .env.example .env
 npm install
 
 # Run migrations
+npm run build
 npm run db:migrate
+or
+npx tsx src/config/migrate.ts
+or
+npx tsx run-migration.ts #Run with output
 
 # Seed data
 npm run db:seed
+or
+tsx src/config/seed.ts
+or
+npx tsx run-seed.ts #Run with output
 
 # Start backend
 npm run dev
