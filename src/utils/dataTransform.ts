@@ -18,7 +18,10 @@ export function toSnakeCase(obj: any): any {
     return obj.map(item => toSnakeCase(item));
   } else if (obj !== null && typeof obj === 'object') {
     return Object.keys(obj).reduce((result, key) => {
-      const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+      // Properly handle conversion to avoid leading underscores
+      const snakeKey = key.replace(/([A-Z])/g, (match, letter, index) => 
+        index > 0 ? '_' + letter.toLowerCase() : letter.toLowerCase()
+      );
       result[snakeKey] = toSnakeCase(obj[key]);
       return result;
     }, {} as any);

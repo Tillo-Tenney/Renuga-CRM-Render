@@ -105,11 +105,15 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
            product.unit, product.unitPrice, product.totalPrice]
         );
 
-        // Update product quantity
-        await client.query(
-          'UPDATE products SET available_quantity = available_quantity - $1 WHERE id = $2',
+        // Update product quantity with validation
+        const result = await client.query(
+          'UPDATE products SET available_quantity = available_quantity - $1 WHERE id = $2 AND available_quantity >= $1 RETURNING available_quantity',
           [product.quantity, product.productId]
         );
+        
+        if (result.rowCount === 0) {
+          throw new Error(`Insufficient inventory for product ${product.productName}`);
+        }
       }
     }
 

@@ -3,6 +3,11 @@ import bcrypt from 'bcrypt';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import pool from '../config/database.js';
 
+// Validate JWT_SECRET in production
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required in production');
+}
+
 export const login = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
