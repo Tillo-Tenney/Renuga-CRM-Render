@@ -33,6 +33,7 @@ import { AgingBadge } from '@/components/ui/aging-badge';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Search,
   LayoutGrid,
@@ -44,6 +45,8 @@ import {
   DollarSign,
   ArrowRight,
   User,
+  History,
+  Package,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -53,11 +56,20 @@ import { cn } from '@/lib/utils';
 const leadStatuses: Lead['status'][] = ['New', 'Contacted', 'Quoted', 'Negotiation', 'Won', 'Lost'];
 
 const LeadsPage = () => {
-  const { leads, updateLead, convertLeadToOrder, users } = useCRM();
+  const { leads, updateLead, convertLeadToOrder, users, addRemarkLog, getRemarkLogs } = useCRM();
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>('kanban');
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  
+  // Status update with remark
+  const [pendingStatusChange, setPendingStatusChange] = useState<Lead['status'] | null>(null);
+  const [statusChangeRemark, setStatusChangeRemark] = useState('');
+  const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
+
+  // Remark History
+  const [isRemarkHistoryOpen, setIsRemarkHistoryOpen] = useState(false);
+  const [remarkHistoryLeadId, setRemarkHistoryLeadId] = useState('');
 
   const filteredLeads = leads.filter(
     (lead) =>
@@ -70,13 +82,40 @@ const LeadsPage = () => {
     return filteredLeads.filter((lead) => lead.status === status);
   };
 
-  const handleStatusChange = (leadId: string, newStatus: Lead['status']) => {
-    updateLead(leadId, { status: newStatus });
-    toast.success(`Lead status updated to ${newStatus}`);
+  const initiateStatusChange = (newStatus: Lead['status']) => {
+    if (!selectedLead) return;
+    if (newStatus === selectedLead.status) return;
+    
+    setPendingStatusChange(newStatus);
+    setStatusChangeRemark('');
+    setIsStatusDialogOpen(true);
+  };
+
+  const confirmStatusChange = () => {
+    if (!selectedLead || !pendingStatusChange) return;
+    
+    if (!statusChangeRemark.trim()) {
+      toast.error('Remark is mandatory for status change');
+      return;
+    }
+
+    updateLead(selectedLead.id, { 
+      status: pendingStatusChange,
+      lastFollowUp: new Date(),
+    });
+    addRemarkLog('lead', selectedLead.id, `Status changed to ${pendingStatusChange}: ${statusChangeRemark}`);
+    
+    setSelectedLead({ ...selectedLead, status: pendingStatusChange });
+    toast.success(`Lead status updated to ${pendingStatusChange}`);
+    
+    setIsStatusDialogOpen(false);
+    setPendingStatusChange(null);
+    setStatusChangeRemark('');
   };
 
   const handleConvertToOrder = (lead: Lead) => {
     convertLeadToOrder(lead.id, {});
+    addRemarkLog('lead', lead.id, 'Lead converted to order');
     toast.success('Lead converted to order successfully!');
     setIsDetailOpen(false);
   };
@@ -85,6 +124,13 @@ const LeadsPage = () => {
     setSelectedLead(lead);
     setIsDetailOpen(true);
   };
+
+  const openRemarkHistory = (leadId: string) => {
+    setRemarkHistoryLeadId(leadId);
+    setIsRemarkHistoryOpen(true);
+  };
+
+  const remarkHistory = getRemarkLogs('lead', remarkHistoryLeadId || (selectedLead?.id || ''));
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -150,6 +196,12 @@ const LeadsPage = () => {
                             {lead.mobile}
                           </div>
                           <p className="text-xs line-clamp-2">{lead.productInterest}</p>
+                          {lead.plannedPurchaseQuantity && (
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Package className="h-3 w-3" />
+                              Planned: {lead.plannedPurchaseQuantity} units
+                            </div>
+                          )}
                           {lead.estimatedValue && (
                             <div className="flex items-center gap-1 text-sm font-medium text-primary">
                               <DollarSign className="h-3 w-3" />
@@ -181,6 +233,7 @@ const LeadsPage = () => {
                   <TableHead>Customer</TableHead>
                   <TableHead>Mobile</TableHead>
                   <TableHead>Product Interest</TableHead>
+                  <TableHead>Planned Qty</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Aging</TableHead>
                   <TableHead>Last Follow-up</TableHead>
@@ -203,6 +256,7 @@ const LeadsPage = () => {
                     <TableCell className="font-medium">{lead.customerName}</TableCell>
                     <TableCell>{lead.mobile}</TableCell>
                     <TableCell className="max-w-40 truncate">{lead.productInterest}</TableCell>
+                    <TableCell>{lead.plannedPurchaseQuantity || '-'}</TableCell>
                     <TableCell>
                       <StatusBadge status={lead.status} />
                     </TableCell>
@@ -223,7 +277,7 @@ const LeadsPage = () => {
                 ))}
                 {filteredLeads.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                       No leads found
                     </TableCell>
                   </TableRow>
@@ -284,6 +338,12 @@ const LeadsPage = () => {
                         <span className="text-sm">Product Interest</span>
                         <span className="font-medium">{selectedLead.productInterest}</span>
                       </div>
+                      {selectedLead.plannedPurchaseQuantity && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm">Planned Quantity</span>
+                          <span className="font-medium">{selectedLead.plannedPurchaseQuantity} units</span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between">
                         <span className="text-sm">Estimated Value</span>
                         <span className="font-medium">
@@ -304,10 +364,7 @@ const LeadsPage = () => {
                     <h4 className="font-medium text-sm text-muted-foreground">Update Status</h4>
                     <Select
                       value={selectedLead.status}
-                      onValueChange={(value) => {
-                        handleStatusChange(selectedLead.id, value as Lead['status']);
-                        setSelectedLead({ ...selectedLead, status: value as Lead['status'] });
-                      }}
+                      onValueChange={(value) => initiateStatusChange(value as Lead['status'])}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -322,13 +379,24 @@ const LeadsPage = () => {
                     </Select>
                   </div>
 
-                  {/* Remarks */}
-                  {selectedLead.remarks && (
-                    <div className="space-y-2">
-                      <h4 className="font-medium text-sm text-muted-foreground">Remarks</h4>
-                      <p className="text-sm bg-muted p-3 rounded-lg">{selectedLead.remarks}</p>
+                  {/* Remark History */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium text-sm text-muted-foreground">Remark History</h4>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => openRemarkHistory(selectedLead.id)}
+                        className="gap-1"
+                      >
+                        <History className="h-4 w-4" />
+                        View All
+                      </Button>
                     </div>
-                  )}
+                    {selectedLead.remarks && (
+                      <p className="text-sm bg-muted p-3 rounded-lg">{selectedLead.remarks}</p>
+                    )}
+                  </div>
                 </div>
 
                 <DialogFooter className="gap-2">
@@ -347,6 +415,64 @@ const LeadsPage = () => {
                 </DialogFooter>
               </>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Status Change Remark Dialog */}
+        <Dialog open={isStatusDialogOpen} onOpenChange={setIsStatusDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Update Lead Status</DialogTitle>
+              <DialogDescription>
+                Changing status to: <strong>{pendingStatusChange}</strong>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Remark * (Mandatory)</Label>
+                <Textarea
+                  value={statusChangeRemark}
+                  onChange={(e) => setStatusChangeRemark(e.target.value)}
+                  placeholder="Add remark for this status change..."
+                  rows={3}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsStatusDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={confirmStatusChange}>
+                Confirm Status Change
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Remark History Dialog */}
+        <Dialog open={isRemarkHistoryOpen} onOpenChange={setIsRemarkHistoryOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                Remark History
+              </DialogTitle>
+            </DialogHeader>
+            <ScrollArea className="max-h-80">
+              <div className="space-y-3">
+                {remarkHistory.length > 0 ? remarkHistory.map((log) => (
+                  <div key={log.id} className="p-3 bg-muted rounded-lg">
+                    <p className="text-sm">{log.remark}</p>
+                    <div className="flex justify-between items-center mt-2 text-xs text-muted-foreground">
+                      <span>{log.createdBy}</span>
+                      <span>{format(new Date(log.createdAt), 'dd MMM yyyy HH:mm')}</span>
+                    </div>
+                  </div>
+                )) : (
+                  <p className="text-center text-muted-foreground py-4">No remarks found</p>
+                )}
+              </div>
+            </ScrollArea>
           </DialogContent>
         </Dialog>
       </div>

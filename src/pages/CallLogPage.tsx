@@ -19,7 +19,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -30,17 +29,26 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Search, Phone, ArrowRight, Edit } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Plus, Search, Phone, ArrowRight, Edit, History, ShoppingCart, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { CallLog } from '@/data/mockData';
+import { CallLog, Order, OrderProduct } from '@/data/mockData';
 
 const CallLogPage = () => {
-  const { callLogs, addCallLog, updateCallLog, products, users, currentUser, addLead } = useCRM();
+  const { 
+    callLogs, addCallLog, updateCallLog, 
+    products, users, customers, currentUser, 
+    addLead, addOrder, updateOrder, getOrdersByCustomer,
+    addRemarkLog, getRemarkLogs 
+  } = useCRM();
   const [searchTerm, setSearchTerm] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingCallId, setEditingCallId] = useState<string | null>(null);
+  
+  // Form state
   const [formData, setFormData] = useState({
     customerName: '',
     mobile: '',
@@ -51,7 +59,27 @@ const CallLogPage = () => {
     followUpTime: '',
     remarks: '',
     status: 'Open' as CallLog['status'],
+    // Lead specific
+    plannedPurchaseQuantity: '',
+    // Order specific
+    deliveryAddress: '',
+    expectedDeliveryDate: '',
   });
+
+  // Order products for new order
+  const [orderProducts, setOrderProducts] = useState<OrderProduct[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState('');
+  const [productQuantity, setProductQuantity] = useState('');
+
+  // Update order selection
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
+  const [isUpdateOrderDialogOpen, setIsUpdateOrderDialogOpen] = useState(false);
+  const [updateOrderForm, setUpdateOrderForm] = useState<Partial<Order>>({});
+
+  // Remark History
+  const [isRemarkHistoryOpen, setIsRemarkHistoryOpen] = useState(false);
+  const [remarkHistoryCallId, setRemarkHistoryCallId] = useState('');
 
   const filteredLogs = callLogs.filter(
     (log) =>
@@ -71,14 +99,21 @@ const CallLogPage = () => {
       followUpTime: '',
       remarks: '',
       status: 'Open',
+      plannedPurchaseQuantity: '',
+      deliveryAddress: '',
+      expectedDeliveryDate: '',
     });
+    setOrderProducts([]);
+    setSelectedProductId('');
+    setProductQuantity('');
     setIsEditMode(false);
     setEditingCallId(null);
+    setSelectedOrderId(null);
+    setCustomerOrders([]);
   };
 
   const handleOpenDialog = (callLog?: CallLog) => {
     if (callLog) {
-      // Edit mode
       setIsEditMode(true);
       setEditingCallId(callLog.id);
       setFormData({
@@ -91,11 +126,53 @@ const CallLogPage = () => {
         followUpTime: callLog.followUpDate ? format(new Date(callLog.followUpDate), 'HH:mm') : '',
         remarks: callLog.remarks,
         status: callLog.status,
+        plannedPurchaseQuantity: '',
+        deliveryAddress: '',
+        expectedDeliveryDate: '',
       });
     } else {
       resetForm();
     }
     setIsDialogOpen(true);
+  };
+
+  const handleMobileChange = (mobile: string) => {
+    setFormData({ ...formData, mobile });
+    // Auto-fill customer name if exists
+    const customer = customers.find(c => c.mobile === mobile);
+    if (customer) {
+      setFormData(prev => ({ ...prev, mobile, customerName: customer.name }));
+    }
+    // Load orders for Update Order action
+    const orders = getOrdersByCustomer(mobile);
+    setCustomerOrders(orders);
+  };
+
+  const addProductToOrder = () => {
+    if (!selectedProductId || !productQuantity) {
+      toast.error('Select product and quantity');
+      return;
+    }
+    const product = products.find(p => p.id === selectedProductId);
+    if (!product) return;
+
+    const quantity = parseFloat(productQuantity);
+    const totalPrice = quantity * product.price;
+
+    setOrderProducts(prev => [...prev, {
+      productId: product.id,
+      productName: product.name,
+      quantity,
+      unit: product.unit,
+      unitPrice: product.price,
+      totalPrice,
+    }]);
+    setSelectedProductId('');
+    setProductQuantity('');
+  };
+
+  const removeProductFromOrder = (index: number) => {
+    setOrderProducts(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -106,13 +183,28 @@ const CallLogPage = () => {
       return;
     }
 
+    if (!formData.remarks.trim()) {
+      toast.error('Remark is mandatory');
+      return;
+    }
+
     if (formData.nextAction === 'Follow-up' && (!formData.followUpDate || !formData.followUpTime)) {
       toast.error('Follow-up date and time are required');
       return;
     }
 
+    if (formData.nextAction === 'New Order') {
+      if (orderProducts.length === 0) {
+        toast.error('Add at least one product to the order');
+        return;
+      }
+      if (!formData.deliveryAddress || !formData.expectedDeliveryDate) {
+        toast.error('Delivery address and expected date are required for new order');
+        return;
+      }
+    }
+
     if (isEditMode && editingCallId) {
-      // Update existing call log
       updateCallLog(editingCallId, {
         customerName: formData.customerName,
         mobile: formData.mobile,
@@ -125,9 +217,9 @@ const CallLogPage = () => {
         remarks: formData.remarks,
         status: formData.status,
       });
+      addRemarkLog('callLog', editingCallId, formData.remarks);
       toast.success('Call log updated successfully!');
     } else {
-      // Create new call log
       const newCallLog = addCallLog({
         callDate: new Date(),
         customerName: formData.customerName,
@@ -143,19 +235,37 @@ const CallLogPage = () => {
         status: formData.nextAction === 'No Action' ? 'Closed' : 'Open',
       });
 
-      // If Lead Created, automatically create lead
+      // Handle different next actions
       if (formData.nextAction === 'Lead Created') {
         addLead({
           callId: newCallLog.id,
           customerName: formData.customerName,
           mobile: formData.mobile,
           productInterest: formData.productInterest,
+          plannedPurchaseQuantity: formData.plannedPurchaseQuantity ? parseFloat(formData.plannedPurchaseQuantity) : undefined,
           status: 'New',
           createdDate: new Date(),
           assignedTo: users.find(u => u.role === 'Sales')?.name || currentUser.name,
           remarks: formData.remarks,
         });
         toast.success('Call logged & Lead created successfully!');
+      } else if (formData.nextAction === 'New Order') {
+        const totalAmount = orderProducts.reduce((sum, p) => sum + p.totalPrice, 0);
+        addOrder({
+          callId: newCallLog.id,
+          customerName: formData.customerName,
+          mobile: formData.mobile,
+          deliveryAddress: formData.deliveryAddress,
+          products: orderProducts,
+          totalAmount,
+          status: 'Order Received',
+          orderDate: new Date(),
+          expectedDeliveryDate: new Date(formData.expectedDeliveryDate),
+          paymentStatus: 'Pending',
+          assignedTo: users.find(u => u.role === 'Operations')?.name || currentUser.name,
+          remarks: formData.remarks,
+        });
+        toast.success('Call logged & Order created successfully!');
       } else {
         toast.success('Call logged successfully!');
       }
@@ -165,18 +275,64 @@ const CallLogPage = () => {
     resetForm();
   };
 
+  const openUpdateOrderDialog = (order: Order) => {
+    setSelectedOrderId(order.id);
+    setUpdateOrderForm({
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      expectedDeliveryDate: order.expectedDeliveryDate,
+      deliveryAddress: order.deliveryAddress,
+      remarks: order.remarks,
+    });
+    setOrderProducts([...order.products]);
+    setIsUpdateOrderDialogOpen(true);
+  };
+
+  const handleUpdateOrder = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOrderId) return;
+    
+    if (!updateOrderForm.remarks?.trim()) {
+      toast.error('Remark is mandatory');
+      return;
+    }
+
+    const order = customerOrders.find(o => o.id === selectedOrderId);
+    if (!order) return;
+
+    const totalAmount = orderProducts.reduce((sum, p) => sum + p.totalPrice, 0);
+    
+    updateOrder(selectedOrderId, {
+      ...updateOrderForm,
+      products: orderProducts,
+      totalAmount,
+    }, order.products);
+    
+    addRemarkLog('order', selectedOrderId, updateOrderForm.remarks || '');
+    toast.success('Order updated successfully!');
+    setIsUpdateOrderDialogOpen(false);
+    setSelectedOrderId(null);
+    setOrderProducts([]);
+  };
+
+  const openRemarkHistory = (callId: string) => {
+    setRemarkHistoryCallId(callId);
+    setIsRemarkHistoryOpen(true);
+  };
+
+  const remarkHistory = getRemarkLogs('callLog', remarkHistoryCallId);
+
   const getActionBadgeVariant = (action: CallLog['nextAction']) => {
     switch (action) {
-      case 'Lead Created':
-        return 'default';
-      case 'Order Updated':
-        return 'secondary';
-      case 'Follow-up':
-        return 'outline';
-      default:
-        return 'secondary';
+      case 'Lead Created': return 'default';
+      case 'New Order': return 'default';
+      case 'Order Updated': return 'secondary';
+      case 'Follow-up': return 'outline';
+      default: return 'secondary';
     }
   };
+
+  const totalOrderAmount = orderProducts.reduce((sum, p) => sum + p.totalPrice, 0);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -203,7 +359,7 @@ const CallLogPage = () => {
 
         {/* Call Log Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setIsDialogOpen(open); }}>
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Phone className="h-5 w-5 text-primary" />
@@ -217,22 +373,22 @@ const CallLogPage = () => {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
+                  <Label htmlFor="mobile">Mobile Number *</Label>
+                  <Input
+                    id="mobile"
+                    value={formData.mobile}
+                    onChange={(e) => handleMobileChange(e.target.value)}
+                    placeholder="Enter mobile"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="customerName">Customer Name *</Label>
                   <Input
                     id="customerName"
                     value={formData.customerName}
                     onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
                     placeholder="Enter name"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="mobile">Mobile Number *</Label>
-                  <Input
-                    id="mobile"
-                    value={formData.mobile}
-                    onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                    placeholder="Enter mobile"
                     required
                   />
                 </div>
@@ -290,6 +446,7 @@ const CallLogPage = () => {
                     <SelectContent>
                       <SelectItem value="Follow-up">Follow-up</SelectItem>
                       <SelectItem value="Lead Created">Create Lead</SelectItem>
+                      <SelectItem value="New Order">New Order</SelectItem>
                       <SelectItem value="Order Updated">Update Order</SelectItem>
                       <SelectItem value="No Action">No Action Required</SelectItem>
                     </SelectContent>
@@ -314,6 +471,7 @@ const CallLogPage = () => {
                 )}
               </div>
 
+              {/* Follow-up fields */}
               {formData.nextAction === 'Follow-up' && (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -339,14 +497,171 @@ const CallLogPage = () => {
                 </div>
               )}
 
+              {/* Lead Creation - Planned Purchase Quantity */}
+              {formData.nextAction === 'Lead Created' && (
+                <div className="space-y-2">
+                  <Label htmlFor="plannedPurchaseQuantity">Planned Purchase Quantity</Label>
+                  <Input
+                    id="plannedPurchaseQuantity"
+                    type="number"
+                    value={formData.plannedPurchaseQuantity}
+                    onChange={(e) => setFormData({ ...formData, plannedPurchaseQuantity: e.target.value })}
+                    placeholder="Expected quantity for offer planning"
+                  />
+                </div>
+              )}
+
+              {/* New Order Fields */}
+              {formData.nextAction === 'New Order' && (
+                <Card>
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <ShoppingCart className="h-4 w-4" />
+                      Order Details
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Delivery Address *</Label>
+                        <Input
+                          value={formData.deliveryAddress}
+                          onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
+                          placeholder="Full delivery address"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Expected Delivery Date *</Label>
+                        <Input
+                          type="date"
+                          value={formData.expectedDeliveryDate}
+                          onChange={(e) => setFormData({ ...formData, expectedDeliveryDate: e.target.value })}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    {/* Add Products */}
+                    <div className="space-y-2">
+                      <Label>Add Products</Label>
+                      <div className="flex gap-2">
+                        <Select value={selectedProductId} onValueChange={setSelectedProductId}>
+                          <SelectTrigger className="flex-1">
+                            <SelectValue placeholder="Select product" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {products.filter(p => p.status !== 'Out of Stock').map((product) => (
+                              <SelectItem key={product.id} value={product.id}>
+                                {product.name} (₹{product.price}/{product.unit})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          type="number"
+                          placeholder="Qty"
+                          value={productQuantity}
+                          onChange={(e) => setProductQuantity(e.target.value)}
+                          className="w-24"
+                        />
+                        <Button type="button" variant="outline" onClick={addProductToOrder}>
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Order Products List */}
+                    {orderProducts.length > 0 && (
+                      <div className="border rounded-lg">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Product</TableHead>
+                              <TableHead className="text-right">Qty</TableHead>
+                              <TableHead className="text-right">Price</TableHead>
+                              <TableHead className="text-right">Total</TableHead>
+                              <TableHead></TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {orderProducts.map((product, index) => (
+                              <TableRow key={index}>
+                                <TableCell>{product.productName}</TableCell>
+                                <TableCell className="text-right">{product.quantity} {product.unit}</TableCell>
+                                <TableCell className="text-right">₹{product.unitPrice}</TableCell>
+                                <TableCell className="text-right">₹{product.totalPrice.toLocaleString()}</TableCell>
+                                <TableCell>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => removeProductFromOrder(index)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            <TableRow>
+                              <TableCell colSpan={3} className="text-right font-medium">Total</TableCell>
+                              <TableCell className="text-right font-bold">₹{totalOrderAmount.toLocaleString()}</TableCell>
+                              <TableCell></TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Update Order Selection */}
+              {formData.nextAction === 'Order Updated' && customerOrders.length > 0 && (
+                <Card>
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm">Select Order to Update</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {customerOrders.map((order) => (
+                        <div
+                          key={order.id}
+                          className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted cursor-pointer"
+                          onClick={() => openUpdateOrderDialog(order)}
+                        >
+                          <div>
+                            <p className="font-medium">{order.id}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {order.products.map(p => p.productName).join(', ')}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <Badge variant="outline">{order.status}</Badge>
+                            <p className="text-sm font-medium mt-1">₹{order.totalAmount.toLocaleString()}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {formData.nextAction === 'Order Updated' && customerOrders.length === 0 && formData.mobile && (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No orders found for this customer
+                </p>
+              )}
+
               <div className="space-y-2">
-                <Label htmlFor="remarks">Remarks</Label>
+                <Label htmlFor="remarks">Remarks * (Mandatory)</Label>
                 <Textarea
                   id="remarks"
                   value={formData.remarks}
                   onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-                  placeholder="Add any additional notes..."
+                  placeholder="Add notes for this call..."
                   rows={3}
+                  required
                 />
               </div>
 
@@ -356,11 +671,159 @@ const CallLogPage = () => {
                 </Button>
                 <Button type="submit" className="gap-2">
                   {isEditMode ? 'Update' : 'Save'} 
-                  {!isEditMode && (formData.nextAction === 'Follow-up' ? ' & Create Task' : '')}
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Update Order Dialog */}
+        <Dialog open={isUpdateOrderDialogOpen} onOpenChange={setIsUpdateOrderDialogOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Update Order - {selectedOrderId}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleUpdateOrder} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select
+                    value={updateOrderForm.status}
+                    onValueChange={(value) => setUpdateOrderForm({ ...updateOrderForm, status: value as Order['status'] })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Order Received">Order Received</SelectItem>
+                      <SelectItem value="In Production">In Production</SelectItem>
+                      <SelectItem value="Ready for Delivery">Ready for Delivery</SelectItem>
+                      <SelectItem value="Out for Delivery">Out for Delivery</SelectItem>
+                      <SelectItem value="Delivered">Delivered</SelectItem>
+                      <SelectItem value="Cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Payment Status</Label>
+                  <Select
+                    value={updateOrderForm.paymentStatus}
+                    onValueChange={(value) => setUpdateOrderForm({ ...updateOrderForm, paymentStatus: value as Order['paymentStatus'] })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Pending">Pending</SelectItem>
+                      <SelectItem value="Partial">Partial</SelectItem>
+                      <SelectItem value="Completed">Completed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Delivery Address</Label>
+                <Input
+                  value={updateOrderForm.deliveryAddress || ''}
+                  onChange={(e) => setUpdateOrderForm({ ...updateOrderForm, deliveryAddress: e.target.value })}
+                />
+              </div>
+
+              {/* Order Products */}
+              <div className="space-y-2">
+                <Label>Products</Label>
+                <div className="flex gap-2 mb-2">
+                  <Select value={selectedProductId} onValueChange={setSelectedProductId}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Add product" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products.filter(p => p.status !== 'Out of Stock').map((product) => (
+                        <SelectItem key={product.id} value={product.id}>
+                          {product.name} (₹{product.price}/{product.unit})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    placeholder="Qty"
+                    value={productQuantity}
+                    onChange={(e) => setProductQuantity(e.target.value)}
+                    className="w-24"
+                  />
+                  <Button type="button" variant="outline" onClick={addProductToOrder}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                {orderProducts.length > 0 && (
+                  <div className="border rounded-lg max-h-40 overflow-y-auto">
+                    <Table>
+                      <TableBody>
+                        {orderProducts.map((product, index) => (
+                          <TableRow key={index}>
+                            <TableCell className="py-2">{product.productName}</TableCell>
+                            <TableCell className="py-2 text-right">{product.quantity} {product.unit}</TableCell>
+                            <TableCell className="py-2 text-right">₹{product.totalPrice.toLocaleString()}</TableCell>
+                            <TableCell className="py-2">
+                              <Button type="button" variant="ghost" size="icon" onClick={() => removeProductFromOrder(index)}>
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Remark * (Mandatory)</Label>
+                <Textarea
+                  value={updateOrderForm.remarks || ''}
+                  onChange={(e) => setUpdateOrderForm({ ...updateOrderForm, remarks: e.target.value })}
+                  placeholder="Add update notes..."
+                  required
+                />
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsUpdateOrderDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">Update Order</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Remark History Dialog */}
+        <Dialog open={isRemarkHistoryOpen} onOpenChange={setIsRemarkHistoryOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                Remark History
+              </DialogTitle>
+            </DialogHeader>
+            <ScrollArea className="max-h-80">
+              <div className="space-y-3">
+                {remarkHistory.length > 0 ? remarkHistory.map((log) => (
+                  <div key={log.id} className="p-3 bg-muted rounded-lg">
+                    <p className="text-sm">{log.remark}</p>
+                    <div className="flex justify-between items-center mt-2 text-xs text-muted-foreground">
+                      <span>{log.createdBy}</span>
+                      <span>{format(new Date(log.createdAt), 'dd MMM yyyy HH:mm')}</span>
+                    </div>
+                  </div>
+                )) : (
+                  <p className="text-center text-muted-foreground py-4">No remarks found</p>
+                )}
+              </div>
+            </ScrollArea>
           </DialogContent>
         </Dialog>
 
@@ -411,14 +874,14 @@ const CallLogPage = () => {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleOpenDialog(log)}
-                      title="Edit call log"
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(log)} title="Edit call log">
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => openRemarkHistory(log.id)} title="View remarks">
+                        <History className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

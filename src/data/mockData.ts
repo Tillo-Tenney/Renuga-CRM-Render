@@ -1,5 +1,15 @@
 // Mock Data for Renuga Roofings CRM
 
+// Remark log for tracking all comments with timestamp and user
+export interface RemarkLog {
+  id: string;
+  entityType: 'callLog' | 'lead' | 'order' | 'product' | 'customer' | 'user';
+  entityId: string;
+  remark: string;
+  createdBy: string;
+  createdAt: Date;
+}
+
 export interface CallLog {
   id: string;
   callDate: Date;
@@ -7,7 +17,7 @@ export interface CallLog {
   mobile: string;
   queryType: 'Price Inquiry' | 'Product Info' | 'Complaint' | 'Order Status' | 'General';
   productInterest: string;
-  nextAction: 'Follow-up' | 'Lead Created' | 'Order Updated' | 'No Action';
+  nextAction: 'Follow-up' | 'Lead Created' | 'Order Updated' | 'New Order' | 'No Action';
   followUpDate?: Date;
   remarks: string;
   assignedTo: string;
@@ -22,6 +32,7 @@ export interface Lead {
   email?: string;
   address?: string;
   productInterest: string;
+  plannedPurchaseQuantity?: number;
   status: 'New' | 'Contacted' | 'Quoted' | 'Negotiation' | 'Won' | 'Lost';
   createdDate: Date;
   agingDays: number;
@@ -90,8 +101,18 @@ export interface Product {
   category: 'Roofing Sheet' | 'Tile' | 'Accessories';
   unit: string;
   price: number;
+  availableQuantity: number;
+  thresholdQuantity: number;
+  status: 'Active' | 'Alert' | 'Out of Stock';
   isActive: boolean;
 }
+
+// Calculate product status based on available quantity and threshold
+export const calculateProductStatus = (availableQuantity: number, thresholdQuantity: number): Product['status'] => {
+  if (availableQuantity <= 0) return 'Out of Stock';
+  if (availableQuantity <= thresholdQuantity) return 'Alert';
+  return 'Active';
+};
 
 export interface Customer {
   id: string;
@@ -135,16 +156,16 @@ export const mockUsers: User[] = [
   { id: 'U004', name: 'Admin', email: 'admin@renuga.com', role: 'Admin', isActive: true },
 ];
 
-// Mock Products
+// Mock Products with quantity and threshold
 export const mockProducts: Product[] = [
-  { id: 'P001', name: 'Color Coated Roofing Sheet', category: 'Roofing Sheet', unit: 'Sq.ft', price: 45, isActive: true },
-  { id: 'P002', name: 'GI Plain Sheet', category: 'Roofing Sheet', unit: 'Sq.ft', price: 38, isActive: true },
-  { id: 'P003', name: 'Polycarbonate Sheet', category: 'Roofing Sheet', unit: 'Sq.ft', price: 85, isActive: true },
-  { id: 'P004', name: 'Clay Roof Tile', category: 'Tile', unit: 'Piece', price: 12, isActive: true },
-  { id: 'P005', name: 'Cement Roof Tile', category: 'Tile', unit: 'Piece', price: 18, isActive: true },
-  { id: 'P006', name: 'Ridge Cap', category: 'Accessories', unit: 'Piece', price: 150, isActive: true },
-  { id: 'P007', name: 'Self Drilling Screw', category: 'Accessories', unit: 'Kg', price: 280, isActive: true },
-  { id: 'P008', name: 'Turbo Ventilator', category: 'Accessories', unit: 'Piece', price: 1200, isActive: true },
+  { id: 'P001', name: 'Color Coated Roofing Sheet', category: 'Roofing Sheet', unit: 'Sq.ft', price: 45, availableQuantity: 5000, thresholdQuantity: 2500, status: 'Active', isActive: true },
+  { id: 'P002', name: 'GI Plain Sheet', category: 'Roofing Sheet', unit: 'Sq.ft', price: 38, availableQuantity: 2000, thresholdQuantity: 2000, status: 'Alert', isActive: true },
+  { id: 'P003', name: 'Polycarbonate Sheet', category: 'Roofing Sheet', unit: 'Sq.ft', price: 85, availableQuantity: 3000, thresholdQuantity: 1500, status: 'Active', isActive: true },
+  { id: 'P004', name: 'Clay Roof Tile', category: 'Tile', unit: 'Piece', price: 12, availableQuantity: 800, thresholdQuantity: 1000, status: 'Alert', isActive: true },
+  { id: 'P005', name: 'Cement Roof Tile', category: 'Tile', unit: 'Piece', price: 18, availableQuantity: 2500, thresholdQuantity: 1000, status: 'Active', isActive: true },
+  { id: 'P006', name: 'Ridge Cap', category: 'Accessories', unit: 'Piece', price: 150, availableQuantity: 300, thresholdQuantity: 200, status: 'Active', isActive: true },
+  { id: 'P007', name: 'Self Drilling Screw', category: 'Accessories', unit: 'Kg', price: 280, availableQuantity: 50, thresholdQuantity: 100, status: 'Alert', isActive: true },
+  { id: 'P008', name: 'Turbo Ventilator', category: 'Accessories', unit: 'Piece', price: 1200, availableQuantity: 25, thresholdQuantity: 20, status: 'Active', isActive: true },
 ];
 
 // Mock Customers
@@ -233,6 +254,7 @@ export const mockLeads: Lead[] = [
     email: 'kumar@email.com',
     address: '45, Anna Nagar, Trichy',
     productInterest: 'Color Coated Roofing Sheet',
+    plannedPurchaseQuantity: 500,
     status: 'Negotiation',
     createdDate: new Date('2024-12-11'),
     agingDays: 4,
@@ -251,6 +273,7 @@ export const mockLeads: Lead[] = [
     email: 'senthil@builders.com',
     address: '12, Thillai Nagar, Trichy',
     productInterest: 'Polycarbonate Sheet',
+    plannedPurchaseQuantity: 2000,
     status: 'Quoted',
     createdDate: new Date('2024-12-14'),
     agingDays: 1,
@@ -268,6 +291,7 @@ export const mockLeads: Lead[] = [
     mobile: '9876543213',
     address: '99, Woraiyur, Trichy',
     productInterest: 'Turbo Ventilator',
+    plannedPurchaseQuantity: 40,
     status: 'New',
     createdDate: new Date('2024-12-15'),
     agingDays: 0,
@@ -284,6 +308,7 @@ export const mockLeads: Lead[] = [
     mobile: '9876543220',
     address: '55, Cantonment, Trichy',
     productInterest: 'Color Coated Roofing Sheet',
+    plannedPurchaseQuantity: 2000,
     status: 'Contacted',
     createdDate: new Date('2024-12-03'),
     agingDays: 12,
@@ -300,6 +325,7 @@ export const mockLeads: Lead[] = [
     mobile: '9876543221',
     address: '22, Ponmalai, Trichy',
     productInterest: 'GI Plain Sheet',
+    plannedPurchaseQuantity: 1500,
     status: 'New',
     createdDate: new Date('2024-12-08'),
     agingDays: 7,
@@ -493,5 +519,33 @@ export const mockShiftNotes: ShiftNote[] = [
     createdAt: new Date('2024-12-14T18:00:00'),
     content: 'Evening shift:\n- Sent quotes to Senthil Builders\n- Ganesh Housing not responding - mark as critical\n- Production team confirmed ORD-202 will be ready by 18th',
     isActive: false,
+  },
+];
+
+// Mock Remark Logs
+export const mockRemarkLogs: RemarkLog[] = [
+  {
+    id: 'RL001',
+    entityType: 'order',
+    entityId: 'ORD-201',
+    remark: 'Pending final payment confirmation',
+    createdBy: 'Muthu R.',
+    createdAt: new Date('2024-12-09T10:00:00'),
+  },
+  {
+    id: 'RL002',
+    entityType: 'lead',
+    entityId: 'L-101',
+    remark: 'Price negotiation in progress',
+    createdBy: 'Ravi K.',
+    createdAt: new Date('2024-12-11T14:00:00'),
+  },
+  {
+    id: 'RL003',
+    entityType: 'lead',
+    entityId: 'L-101',
+    remark: 'Customer requesting 5% discount',
+    createdBy: 'Ravi K.',
+    createdAt: new Date('2024-12-14T10:00:00'),
   },
 ];

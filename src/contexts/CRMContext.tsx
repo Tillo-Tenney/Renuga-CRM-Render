@@ -4,11 +4,13 @@ import {
   CallLog,
   Lead,
   Order,
+  OrderProduct,
   Task,
   ShiftNote,
   Product,
   Customer,
   User,
+  RemarkLog,
   mockCallLogs,
   mockLeads,
   mockOrders,
@@ -17,8 +19,10 @@ import {
   mockProducts,
   mockCustomers,
   mockUsers,
+  mockRemarkLogs,
   getAgingBucket,
   calculateAgingDays,
+  calculateProductStatus,
 } from '@/data/mockData';
 
 interface CRMContextType {
@@ -31,6 +35,7 @@ interface CRMContextType {
   products: Product[];
   customers: Customer[];
   users: User[];
+  remarkLogs: RemarkLog[];
   currentUser: User;
   
   // Actions
@@ -42,7 +47,7 @@ interface CRMContextType {
   convertLeadToOrder: (leadId: string, orderData: Partial<Order>) => Order;
   
   addOrder: (order: Omit<Order, 'id' | 'agingDays' | 'isDelayed'>) => Order;
-  updateOrder: (id: string, data: Partial<Order>) => void;
+  updateOrder: (id: string, data: Partial<Order>, oldProducts?: OrderProduct[]) => void;
   
   addTask: (task: Omit<Task, 'id' | 'createdAt'>) => Task;
   updateTask: (id: string, data: Partial<Task>) => void;
@@ -53,8 +58,21 @@ interface CRMContextType {
   clearShiftNote: (id: string) => void;
   
   addCustomer: (customer: Omit<Customer, 'id' | 'createdAt' | 'totalOrders' | 'totalValue'>) => Customer;
-  addProduct: (product: Omit<Product, 'id'>) => Product;
+  updateCustomer: (id: string, data: Partial<Customer>) => void;
+  
+  addProduct: (product: Omit<Product, 'id' | 'status'>) => Product;
+  updateProduct: (id: string, data: Partial<Product>) => void;
+  updateProductQuantity: (productId: string, quantityChange: number) => void;
+  
   addUser: (user: Omit<User, 'id'>) => User;
+  updateUser: (id: string, data: Partial<User>) => void;
+  
+  // Remark logs
+  addRemarkLog: (entityType: RemarkLog['entityType'], entityId: string, remark: string) => RemarkLog;
+  getRemarkLogs: (entityType: RemarkLog['entityType'], entityId: string) => RemarkLog[];
+  
+  // Utilities
+  getOrdersByCustomer: (mobile: string) => Order[];
   
   // Stats
   getStats: () => CRMStats;
@@ -94,6 +112,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [products, setProducts] = useState<Product[]>(mockProducts);
   const [customers, setCustomers] = useState<Customer[]>(mockCustomers);
   const [users, setUsers] = useState<User[]>(mockUsers);
+  const [remarkLogs, setRemarkLogs] = useState<RemarkLog[]>(mockRemarkLogs);
   
   // Use authenticated user or fallback to first mock user
   const currentUser = authUser || mockUsers[0];
@@ -124,6 +143,11 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
     }
     
+    // Add remark log
+    if (callLogData.remarks) {
+      addRemarkLog('callLog', newCallLog.id, callLogData.remarks);
+    }
+    
     return newCallLog;
   };
 
@@ -142,6 +166,12 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       agingBucket: getAgingBucket(agingDays),
     };
     setLeads(prev => [newLead, ...prev]);
+    
+    // Add remark log
+    if (leadData.remarks) {
+      addRemarkLog('lead', newLead.id, leadData.remarks);
+    }
+    
     return newLead;
   };
 
@@ -192,12 +222,35 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       isDelayed,
     };
     setOrders(prev => [newOrder, ...prev]);
+    
+    // Add remark log
+    if (orderData.remarks) {
+      addRemarkLog('order', newOrder.id, orderData.remarks);
+    }
+    
+    // Deduct product quantities
+    orderData.products.forEach(product => {
+      updateProductQuantity(product.productId, -product.quantity);
+    });
+    
     return newOrder;
   };
 
-  const updateOrder = (id: string, data: Partial<Order>) => {
+  const updateOrder = (id: string, data: Partial<Order>, oldProducts?: OrderProduct[]) => {
     setOrders(prev => prev.map(order => {
       if (order.id === id) {
+        // If products are being updated, adjust quantities
+        if (data.products && oldProducts) {
+          // Restore old quantities
+          oldProducts.forEach(product => {
+            updateProductQuantity(product.productId, product.quantity);
+          });
+          // Deduct new quantities
+          data.products.forEach(product => {
+            updateProductQuantity(product.productId, -product.quantity);
+          });
+        }
+        
         const updatedOrder = { ...order, ...data };
         updatedOrder.agingDays = calculateAgingDays(updatedOrder.orderDate);
         updatedOrder.isDelayed = new Date() > updatedOrder.expectedDeliveryDate && 
@@ -267,13 +320,50 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return newCustomer;
   };
 
-  const addProduct = (productData: Omit<Product, 'id'>): Product => {
+  const updateCustomer = (id: string, data: Partial<Customer>) => {
+    setCustomers(prev => prev.map(customer => 
+      customer.id === id ? { ...customer, ...data } : customer
+    ));
+  };
+
+  const addProduct = (productData: Omit<Product, 'id' | 'status'>): Product => {
+    const status = calculateProductStatus(productData.availableQuantity, productData.thresholdQuantity);
     const newProduct: Product = {
       ...productData,
       id: generateId('P'),
+      status,
     };
     setProducts(prev => [newProduct, ...prev]);
     return newProduct;
+  };
+
+  const updateProduct = (id: string, data: Partial<Product>) => {
+    setProducts(prev => prev.map(product => {
+      if (product.id === id) {
+        const updatedProduct = { ...product, ...data };
+        // Recalculate status
+        updatedProduct.status = calculateProductStatus(
+          updatedProduct.availableQuantity, 
+          updatedProduct.thresholdQuantity
+        );
+        return updatedProduct;
+      }
+      return product;
+    }));
+  };
+
+  const updateProductQuantity = (productId: string, quantityChange: number) => {
+    setProducts(prev => prev.map(product => {
+      if (product.id === productId) {
+        const newQuantity = Math.max(0, product.availableQuantity + quantityChange);
+        return {
+          ...product,
+          availableQuantity: newQuantity,
+          status: calculateProductStatus(newQuantity, product.thresholdQuantity),
+        };
+      }
+      return product;
+    }));
   };
 
   const addUser = (userData: Omit<User, 'id'>): User => {
@@ -283,6 +373,35 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
     setUsers(prev => [newUser, ...prev]);
     return newUser;
+  };
+
+  const updateUser = (id: string, data: Partial<User>) => {
+    setUsers(prev => prev.map(user => 
+      user.id === id ? { ...user, ...data } : user
+    ));
+  };
+
+  const addRemarkLog = (entityType: RemarkLog['entityType'], entityId: string, remark: string): RemarkLog => {
+    const newRemark: RemarkLog = {
+      id: generateId('RL'),
+      entityType,
+      entityId,
+      remark,
+      createdBy: currentUser.name,
+      createdAt: new Date(),
+    };
+    setRemarkLogs(prev => [newRemark, ...prev]);
+    return newRemark;
+  };
+
+  const getRemarkLogs = (entityType: RemarkLog['entityType'], entityId: string): RemarkLog[] => {
+    return remarkLogs
+      .filter(log => log.entityType === entityType && log.entityId === entityId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  };
+
+  const getOrdersByCustomer = (mobile: string): Order[] => {
+    return orders.filter(order => order.mobile === mobile);
   };
 
   const getStats = (): CRMStats => {
@@ -360,6 +479,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         products,
         customers,
         users,
+        remarkLogs,
         currentUser,
         addCallLog,
         updateCallLog,
@@ -375,8 +495,15 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateShiftNote,
         clearShiftNote,
         addCustomer,
+        updateCustomer,
         addProduct,
+        updateProduct,
+        updateProductQuantity,
         addUser,
+        updateUser,
+        addRemarkLog,
+        getRemarkLogs,
+        getOrdersByCustomer,
         getStats,
       }}
     >
