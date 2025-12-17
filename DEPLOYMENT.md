@@ -116,14 +116,32 @@ git push origin main
    - Frontend: `renuga-crm-frontend`
 6. Review the services and click **"Apply"**
 
-#### Step 3: Wait for Deployment
+#### Step 3: Configure Environment Variables
+
+After the initial deployment, you need to configure cross-service URLs:
+
+1. Go to your **renuga-crm-frontend** service in Render
+2. Copy the service URL (format: `https://renuga-crm-frontend.onrender.com`)
+3. Go to your **renuga-crm-api** service
+4. Click **"Environment"** tab
+5. Set the `FRONTEND_URL` variable to your frontend URL
+6. Service will auto-redeploy
+
+7. Go to your **renuga-crm-api** service in Render
+8. Copy the service URL (format: `https://renuga-crm-api.onrender.com`)
+9. Go to your **renuga-crm-frontend** service
+10. Click **"Environment"** tab
+11. Set the `VITE_API_URL` variable to your backend URL
+12. Service will auto-redeploy
+
+#### Step 4: Wait for Deployment
 
 Render will:
 1. Create the PostgreSQL database
 2. Deploy the backend API (this takes 5-10 minutes)
 3. Deploy the frontend static site (this takes 2-5 minutes)
 
-#### Step 4: Initialize Database
+#### Step 5: Initialize Database
 
 Once the backend is deployed:
 
@@ -135,7 +153,7 @@ Once the backend is deployed:
    npm run db:seed
    ```
 
-#### Step 5: Access Your Application
+#### Step 6: Access Your Application
 
 1. Go to your **renuga-crm-frontend** service
 2. Copy the URL (format: `https://renuga-crm-frontend.onrender.com`)

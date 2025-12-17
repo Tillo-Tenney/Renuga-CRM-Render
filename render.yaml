@@ -23,17 +23,13 @@ services:
       - key: JWT_EXPIRES_IN
         value: 7d
       - key: FRONTEND_URL
-        fromService:
-          type: web
-          name: renuga-crm-frontend
-          property: url
+        sync: false
 
   # Frontend Static Site
   - type: web
     name: renuga-crm-frontend
     runtime: static
     env: static
-    region: oregon
     plan: free
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
@@ -50,10 +46,7 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        fromService:
-          type: web
-          name: renuga-crm-api
-          property: url
+        sync: false
 
 # Database
 databases:
