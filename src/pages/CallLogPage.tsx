@@ -425,7 +425,7 @@ const CallLogPage = () => {
                     <SelectContent>
                       {products.map((product) => (
                         <SelectItem key={product.id} value={product.name}>
-                          {product.name}
+                          {product.name} (₹{product.price}/{product.unit}) - Avl: {product.availableQuantity}
                         </SelectItem>
                       ))}
                     </SelectContent>

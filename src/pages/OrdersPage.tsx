@@ -836,7 +836,7 @@ const OrdersPage = () => {
                         <SelectContent>
                           {products.filter(p => p.status !== 'Out of Stock').map((product) => (
                             <SelectItem key={product.id} value={product.id}>
-                              {product.name} (₹{product.price}/{product.unit})
+                              {product.name} (₹{product.price}/{product.unit}) - Avl: {product.availableQuantity}
                             </SelectItem>
                           ))}
                         </SelectContent>
