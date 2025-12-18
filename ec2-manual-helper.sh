@@ -288,7 +288,7 @@ option_setup_pm2() {
     print_header "Setup PM2"
     
     print_info "Creating PM2 configuration..."
-    cat > ecosystem.config.js << 'EOF'
+    cat > ecosystem.config.cjs << 'EOF'
 module.exports = {
   apps: [{
     name: 'renuga-crm-api',
@@ -307,7 +307,7 @@ module.exports = {
 EOF
     
     print_info "Starting backend with PM2..."
-    pm2 start ecosystem.config.js
+    pm2 start ecosystem.config.cjs
     pm2 save
     
     print_info "Setting up PM2 startup..."
