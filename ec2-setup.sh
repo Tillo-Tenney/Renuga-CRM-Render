@@ -229,7 +229,7 @@ setup_pm2() {
     
     print_info "Creating PM2 ecosystem configuration..."
     cat > ecosystem.config.js << 'EOF'
-module.exports = {
+export default {
   apps: [{
     name: 'renuga-crm-api',
     cwd: '/var/www/renuga-crm/server',
