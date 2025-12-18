@@ -130,7 +130,7 @@ option_show_backend_env() {
 option_show_frontend_env() {
     print_header "Frontend .env Template"
     IP=$(get_ip)
-    echo "VITE_API_URL=http://$IP/api"
+    echo "VITE_API_URL=http://$IP"
     echo ""
     print_info "For HTTPS, use https:// instead of http://"
 }
@@ -176,7 +176,7 @@ option_create_frontend_env() {
     
     cat > .env.local << EOF
 # API Configuration
-VITE_API_URL=http://${IP}/api
+VITE_API_URL=http://${IP}
 EOF
     
     chmod 600 .env.local
