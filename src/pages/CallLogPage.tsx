@@ -423,7 +423,7 @@ const CallLogPage = () => {
                       <SelectValue placeholder="Select product" />
                     </SelectTrigger>
                     <SelectContent>
-                      {products.map((product) => (
+                      {products.filter(p => p.status !== 'Out of Stock').map((product) => (
                         <SelectItem key={product.id} value={product.name}>
                           {product.name} (₹{product.price}/{product.unit}) - Avl: {product.availableQuantity}
                         </SelectItem>
