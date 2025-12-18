@@ -52,10 +52,7 @@ check_root() {
 
 get_public_ip() {
     # Try multiple methods to get public IP
-    PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || \
-                curl -s http://checkip.amazonaws.com 2>/dev/null || \
-                curl -s https://api.ipify.org 2>/dev/null || \
-                echo "localhost")
+    PUBLIC_IP="51.20.109.23"
     echo "$PUBLIC_IP"
 }
 
