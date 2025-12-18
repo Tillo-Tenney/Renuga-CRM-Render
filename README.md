@@ -8,7 +8,7 @@ A full-stack CRM system for Renuga Roofings built with React, TypeScript, Node.j
 - **Backend**: Node.js + Express + TypeScript
 - **Database**: PostgreSQL
 - **Authentication**: JWT-based authentication
-- **Deployment**: Render Platform
+- **Deployment**: Render Platform, AWS EC2 Ubuntu
 
 ## 📋 Features
 
@@ -107,7 +107,38 @@ After seeding, use these credentials to login:
 - **Sales**: ravi@renuga.com / password123
 - **Operations**: muthu@renuga.com / password123
 
-## 📦 Deployment to Render
+## 📦 Deployment
+
+### Deployment to AWS EC2 Ubuntu (Recommended for Production)
+
+For deploying to AWS EC2 instances running Ubuntu:
+
+**Quick Start**:
+```bash
+# SSH into your EC2 instance
+ssh -i your-key.pem ubuntu@<EC2_PUBLIC_IP>
+
+# Clone and run automated setup
+git clone https://github.com/Tillo-Tenney/Renuga-CRM-Render.git
+cd Renuga-CRM-Render
+chmod +x ec2-setup.sh
+sudo ./ec2-setup.sh
+```
+
+**Documentation**:
+- 📘 [Quick Start Guide](./QUICKSTART_EC2.md) - Get up and running in 10 minutes
+- 📚 [Full EC2 Deployment Guide](./AWS_EC2_DEPLOYMENT.md) - Complete reference with troubleshooting
+
+**What's Included**:
+- Automated setup script (`ec2-setup.sh`)
+- Manual deployment helper (`ec2-manual-helper.sh`)
+- Nginx configuration templates (`nginx/`)
+- Systemd service files (`systemd/`)
+- Backup and maintenance scripts
+
+### Deployment to Render Platform
+
+For deploying to Render cloud platform:
 
 ### Using render.yaml (Recommended)
 
