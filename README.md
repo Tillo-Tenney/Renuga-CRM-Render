@@ -314,8 +314,14 @@ This project is private and proprietary.
 
 For issues or questions:
 1. Check existing GitHub Issues
-2. Create a new issue with detailed description
-3. Contact the development team
+2. See [TROUBLESHOOTING_TOKEN_ERROR.md](./TROUBLESHOOTING_TOKEN_ERROR.md) for login/authentication issues
+3. Check [DEPLOYMENT.md](./DEPLOYMENT.md) for deployment-related issues
+4. Create a new issue with detailed description
+5. Contact the development team
+
+### Common Issues
+
+**"No token provided" error after deployment**: See [TROUBLESHOOTING_TOKEN_ERROR.md](./TROUBLESHOOTING_TOKEN_ERROR.md) for a comprehensive guide to fixing API URL configuration issues.
 
 ## 🔐 Security
 
