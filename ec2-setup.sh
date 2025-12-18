@@ -228,8 +228,8 @@ setup_pm2() {
     cd "$APP_DIR"
     
     print_info "Creating PM2 ecosystem configuration..."
-    cat > ecosystem.config.js << 'EOF'
-export default {
+    cat > ecosystem.config.cjs << 'EOF'
+module.exports = {
   apps: [{
     name: 'renuga-crm-api',
     cwd: '/var/www/renuga-crm/server',
@@ -255,7 +255,7 @@ EOF
     mkdir -p /var/log/pm2
     
     print_info "Starting backend with PM2..."
-    pm2 start ecosystem.config.js
+    pm2 start ecosystem.config.cjs
     pm2 save
     print_success "Backend started with PM2"
     
