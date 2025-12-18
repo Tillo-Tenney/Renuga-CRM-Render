@@ -52,7 +52,7 @@ check_root() {
 
 get_public_ip() {
     # Try multiple methods to get public IP
-    PUBLIC_IP="51.20.109.23"
+    PUBLIC_IP="13.60.196.131"
     echo "$PUBLIC_IP"
 }
 
