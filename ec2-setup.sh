@@ -204,7 +204,7 @@ configure_frontend() {
     print_info "Creating frontend environment configuration..."
     cat > .env.local << EOF
 # API Configuration
-VITE_API_URL=http://${PUBLIC_IP}/api
+VITE_API_URL=http://${PUBLIC_IP}
 EOF
     
     chmod 600 .env.local

@@ -224,7 +224,7 @@ nano .env.local
 
 Update `.env.local`:
 ```bash
-VITE_API_URL=http://<YOUR_EC2_IP>/api
+VITE_API_URL=http://<YOUR_EC2_IP>
 ```
 
 ```bash
@@ -384,7 +384,7 @@ Update your environment variables:
 FRONTEND_URL=https://your-domain.com
 
 # Frontend .env.local
-VITE_API_URL=https://your-domain.com/api
+VITE_API_URL=https://your-domain.com
 ```
 
 Rebuild and restart:
