@@ -1,22 +1,43 @@
+// Type definition for runtime configuration
+interface RuntimeConfig {
+  apiUrl: string;
+}
+
+// Extend Window interface to include runtime config
+declare global {
+  interface Window {
+    __RUNTIME_CONFIG__?: RuntimeConfig;
+  }
+}
+
+// Placeholder constant used during build
+const API_URL_PLACEHOLDER = '__VITE_API_URL__';
+
 // API configuration with runtime support
 // Priority: Runtime config > Build-time env var > Default localhost
 function getApiBaseUrl(): string {
   // Check for runtime configuration (set via public/config.js)
-  const runtimeConfig = (window as any).__RUNTIME_CONFIG__;
-  if (runtimeConfig?.apiUrl && runtimeConfig.apiUrl !== '__VITE_API_URL__') {
-    console.log('[API Config] Using runtime config:', runtimeConfig.apiUrl);
+  const runtimeConfig = window.__RUNTIME_CONFIG__;
+  if (runtimeConfig?.apiUrl && runtimeConfig.apiUrl !== API_URL_PLACEHOLDER) {
+    if (import.meta.env.DEV) {
+      console.log('[API Config] Using runtime config:', runtimeConfig.apiUrl);
+    }
     return runtimeConfig.apiUrl;
   }
   
   // Fall back to build-time environment variable
   const buildTimeUrl = import.meta.env.VITE_API_URL;
   if (buildTimeUrl) {
-    console.log('[API Config] Using build-time env var:', buildTimeUrl);
+    if (import.meta.env.DEV) {
+      console.log('[API Config] Using build-time env var:', buildTimeUrl);
+    }
     return buildTimeUrl;
   }
   
   // Default to localhost for development
-  console.log('[API Config] Using default localhost');
+  if (import.meta.env.DEV) {
+    console.log('[API Config] Using default localhost');
+  }
   return 'http://localhost:3001';
 }
 
