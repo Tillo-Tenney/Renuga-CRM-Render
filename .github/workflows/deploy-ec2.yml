@@ -130,34 +130,31 @@ jobs:
           name: backend-build
           path: server/dist/
           
-      - name: Validate required secrets
-        run: |
-          if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY }}" ]; then
-            echo "❌ Error: EC2_SSH_PRIVATE_KEY secret is not set"
-            echo "Please configure the EC2_SSH_PRIVATE_KEY secret in GitHub repository settings"
-            echo "See GITHUB_SECRETS_GUIDE.md for instructions"
-            exit 1
-          fi
-          if [ -z "${{ secrets.EC2_HOST }}" ]; then
-            echo "❌ Error: EC2_HOST secret is not set"
-            echo "Please configure the EC2_HOST secret in GitHub repository settings"
-            echo "See GITHUB_SECRETS_GUIDE.md for instructions"
-            exit 1
-          fi
-          if [ -z "${{ secrets.EC2_USER }}" ]; then
-            echo "❌ Error: EC2_USER secret is not set"
-            echo "Please configure the EC2_USER secret in GitHub repository settings"
-            echo "See GITHUB_SECRETS_GUIDE.md for instructions"
-            exit 1
-          fi
-          echo "✅ All required secrets are configured"
-          
       - name: Configure SSH
         run: |
+          set -e
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 700 ~/.ssh
+          
+          # Write SSH private key with proper formatting
+          cat > ~/.ssh/deploy_key << 'EOF'
+          ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          EOF
+          
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          
+          # Add EC2 host to known_hosts with retry logic
+          echo "Adding ${{ secrets.EC2_HOST }} to known_hosts..."
+          for i in {1..3}; do
+            if ssh-keyscan -H -T 10 ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null; then
+              echo "✅ Successfully added host key"
+              break
+            else
+              echo "⚠️ Attempt $i failed, retrying..."
+              [ $i -eq 3 ] && exit 1
+              sleep 2
+            fi
+          done
           
       - name: Create deployment package
         run: |
@@ -299,34 +296,31 @@ jobs:
       contents: read
     
     steps:
-      - name: Validate required secrets
-        run: |
-          if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY }}" ]; then
-            echo "❌ Error: EC2_SSH_PRIVATE_KEY secret is not set"
-            echo "Please configure the EC2_SSH_PRIVATE_KEY secret in GitHub repository settings"
-            echo "See GITHUB_SECRETS_GUIDE.md for instructions"
-            exit 1
-          fi
-          if [ -z "${{ secrets.EC2_HOST }}" ]; then
-            echo "❌ Error: EC2_HOST secret is not set"
-            echo "Please configure the EC2_HOST secret in GitHub repository settings"
-            echo "See GITHUB_SECRETS_GUIDE.md for instructions"
-            exit 1
-          fi
-          if [ -z "${{ secrets.EC2_USER }}" ]; then
-            echo "❌ Error: EC2_USER secret is not set"
-            echo "Please configure the EC2_USER secret in GitHub repository settings"
-            echo "See GITHUB_SECRETS_GUIDE.md for instructions"
-            exit 1
-          fi
-          echo "✅ All required secrets are configured"
-          
       - name: Configure SSH
         run: |
+          set -e
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 700 ~/.ssh
+          
+          # Write SSH private key with proper formatting
+          cat > ~/.ssh/deploy_key << 'EOF'
+          ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          EOF
+          
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          
+          # Add EC2 host to known_hosts with retry logic
+          echo "Adding ${{ secrets.EC2_HOST }} to known_hosts..."
+          for i in {1..3}; do
+            if ssh-keyscan -H -T 10 ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null; then
+              echo "✅ Successfully added host key"
+              break
+            else
+              echo "⚠️ Attempt $i failed, retrying..."
+              [ $i -eq 3 ] && exit 1
+              sleep 2
+            fi
+          done
           
       - name: Perform rollback on EC2
         run: |
