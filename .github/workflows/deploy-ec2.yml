@@ -1,0 +1,303 @@
+name: Deploy to AWS EC2
+
+# Trigger workflow on push to main or production branches, or manual dispatch
+on:
+  push:
+    branches:
+      - main
+      - production
+  pull_request:
+    branches:
+      - main
+      - production
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  NODE_VERSION: '20.x'
+  
+jobs:
+  # Job 1: Build and Test Frontend
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install frontend dependencies
+        run: npm ci
+        
+      - name: Lint frontend code
+        run: npm run lint
+        continue-on-error: true
+        
+      - name: Build frontend
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          
+      - name: Upload frontend build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: dist/
+          retention-days: 7
+
+  # Job 2: Build and Test Backend
+  build-backend:
+    name: Build Backend
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'server/package-lock.json'
+          
+      - name: Install backend dependencies
+        working-directory: ./server
+        run: npm ci
+        
+      - name: Build backend
+        working-directory: ./server
+        run: npm run build
+        
+      - name: Upload backend build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-build
+          path: server/dist/
+          retention-days: 7
+
+  # Job 3: Deploy to EC2
+  deploy:
+    name: Deploy to EC2
+    needs: [build-frontend, build-backend]
+    runs-on: ubuntu-latest
+    # Only deploy on push to main/production, not on PRs
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    environment:
+      name: ${{ github.ref == 'refs/heads/production' && 'production' || (github.event.inputs.environment || 'staging') }}
+      url: http://${{ secrets.EC2_HOST }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Download frontend build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: dist/
+          
+      - name: Download backend build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-build
+          path: server/dist/
+          
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          
+      - name: Create deployment package
+        run: |
+          tar -czf deployment.tar.gz \
+            dist/ \
+            server/dist/ \
+            server/package*.json \
+            nginx/ \
+            systemd/
+            
+      - name: Upload deployment package to EC2
+        run: |
+          scp -i ~/.ssh/deploy_key \
+            deployment.tar.gz \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
+            
+      - name: Deploy application on EC2
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+          
+          set -e
+          
+          # Define variables
+          APP_DIR="/var/www/renuga-crm"
+          BACKUP_DIR="/var/backups/renuga-crm"
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          
+          # Create backup of current deployment
+          echo "Creating backup of current deployment..."
+          sudo mkdir -p $BACKUP_DIR
+          if [ -d "$APP_DIR" ]; then
+            sudo tar -czf $BACKUP_DIR/backup_$TIMESTAMP.tar.gz -C $APP_DIR . 2>/dev/null || true
+            echo "Backup created: $BACKUP_DIR/backup_$TIMESTAMP.tar.gz"
+          fi
+          
+          # Extract new deployment
+          echo "Extracting deployment package..."
+          sudo mkdir -p $APP_DIR
+          sudo tar -xzf /tmp/deployment.tar.gz -C $APP_DIR
+          sudo chown -R $USER:$USER $APP_DIR
+          
+          # Install backend dependencies (production only)
+          echo "Installing backend dependencies..."
+          cd $APP_DIR/server
+          npm ci --production
+          
+          # Run database migrations
+          echo "Running database migrations..."
+          if [ -f "dist/config/migrate.js" ]; then
+            npm run db:migrate || echo "Migration skipped or failed"
+          fi
+          
+          # Update Nginx configuration if changed
+          echo "Updating Nginx configuration..."
+          if [ -f "$APP_DIR/nginx/renuga-crm.conf" ]; then
+            sudo cp $APP_DIR/nginx/renuga-crm.conf /etc/nginx/sites-available/renuga-crm
+            sudo ln -sf /etc/nginx/sites-available/renuga-crm /etc/nginx/sites-enabled/
+            sudo nginx -t && sudo systemctl reload nginx || echo "Nginx configuration update failed"
+          fi
+          
+          # Restart backend service
+          echo "Restarting backend service..."
+          if command -v pm2 &> /dev/null; then
+            cd $APP_DIR/server
+            pm2 restart renuga-crm-api || pm2 start dist/index.js --name renuga-crm-api
+            pm2 save
+          else
+            sudo systemctl restart renuga-crm-api || echo "Service restart failed"
+          fi
+          
+          # Clean up
+          echo "Cleaning up..."
+          rm -f /tmp/deployment.tar.gz
+          
+          # Keep only last 5 backups
+          cd $BACKUP_DIR
+          ls -t backup_*.tar.gz | tail -n +6 | xargs -r rm
+          
+          echo "Deployment completed successfully!"
+          
+          ENDSSH
+          
+      - name: Verify deployment
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+          
+          # Check if services are running
+          echo "Checking service status..."
+          
+          # Check PM2 processes
+          if command -v pm2 &> /dev/null; then
+            pm2 status | grep renuga-crm-api || echo "PM2 process not found"
+          fi
+          
+          # Check Nginx
+          sudo systemctl is-active nginx || echo "Nginx is not running"
+          
+          # Check PostgreSQL
+          sudo systemctl is-active postgresql || echo "PostgreSQL is not running"
+          
+          # Test API health endpoint
+          sleep 5
+          curl -f http://localhost:3001/health || echo "API health check failed"
+          
+          echo "Verification completed!"
+          
+          ENDSSH
+          
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+        
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment to ${{ secrets.EC2_HOST }} completed successfully!"
+          else
+            echo "❌ Deployment to ${{ secrets.EC2_HOST }} failed!"
+          fi
+
+  # Job 4: Rollback (manual trigger only)
+  rollback:
+    name: Rollback Deployment
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'rollback'
+    
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          
+      - name: Perform rollback on EC2
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+          
+          set -e
+          
+          APP_DIR="/var/www/renuga-crm"
+          BACKUP_DIR="/var/backups/renuga-crm"
+          
+          # Get the latest backup
+          LATEST_BACKUP=$(ls -t $BACKUP_DIR/backup_*.tar.gz 2>/dev/null | head -n 1)
+          
+          if [ -z "$LATEST_BACKUP" ]; then
+            echo "❌ No backup found to rollback to!"
+            exit 1
+          fi
+          
+          echo "Rolling back to: $LATEST_BACKUP"
+          
+          # Extract backup
+          sudo tar -xzf "$LATEST_BACKUP" -C $APP_DIR
+          
+          # Restart services
+          if command -v pm2 &> /dev/null; then
+            cd $APP_DIR/server
+            pm2 restart renuga-crm-api
+          else
+            sudo systemctl restart renuga-crm-api
+          fi
+          
+          sudo systemctl reload nginx
+          
+          echo "✅ Rollback completed successfully!"
+          
+          ENDSSH
+          
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

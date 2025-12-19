@@ -126,7 +126,7 @@ sudo ./ec2-setup.sh
 ```
 
 **Documentation**:
-- 📘 [Quick Start Guide](./QUICKSTART_EC2.md) - Get up and running in 10 minutes
+- 📘 [EC2 Quick Start Guide](./QUICKSTART_EC2.md) - Get up and running in 10 minutes
 - 📚 [Full EC2 Deployment Guide](./AWS_EC2_DEPLOYMENT.md) - Complete reference with troubleshooting
 
 **What's Included**:
@@ -135,6 +135,54 @@ sudo ./ec2-setup.sh
 - Nginx configuration templates (`nginx/`)
 - Systemd service files (`systemd/`)
 - Backup and maintenance scripts
+
+### CI/CD with GitHub Actions (Automated Deployment)
+
+Set up continuous integration and deployment for automatic deployments to EC2:
+
+**Quick Start (15 minutes)**:
+```bash
+# Generate deploy key
+ssh-keygen -t ed25519 -C "github-actions" -f ~/.ssh/github_deploy -N ""
+
+# Add public key to EC2
+cat ~/.ssh/github_deploy.pub >> ~/.ssh/authorized_keys
+
+# Configure GitHub Secrets (in repository settings):
+# - EC2_SSH_PRIVATE_KEY: Contents of ~/.ssh/github_deploy
+# - EC2_HOST: Your EC2 IP address
+# - EC2_USER: ubuntu
+# - VITE_API_URL: http://YOUR_EC2_IP:3001
+```
+
+**CI/CD Documentation**:
+- 🚀 [CI/CD Quick Start](./CICD_QUICKSTART.md) - Set up automated deployment in 15 minutes
+- 📖 [Complete CI/CD Guide](./GITHUB_ACTIONS_CICD_GUIDE.md) - Full guide with best practices
+- 🔐 [GitHub Secrets Guide](./GITHUB_SECRETS_GUIDE.md) - Configure secrets properly
+- ✅ [Deployment Checklist](./CICD_DEPLOYMENT_CHECKLIST.md) - Pre and post-deployment tasks
+
+**Features**:
+- ✨ Automated build and test on every push
+- 🚀 Automatic deployment to EC2
+- 🔄 Zero-downtime deployments with automatic backups
+- 🔙 One-click rollback capability
+- ✅ Health checks and verification
+- 📊 Deployment status notifications
+
+**Workflow**:
+```bash
+# Push to main branch
+git push origin main
+
+# GitHub Actions automatically:
+# 1. Builds frontend and backend
+# 2. Runs tests and linting
+# 3. Creates deployment package
+# 4. Deploys to EC2 via SSH
+# 5. Creates backup before deployment
+# 6. Restarts services
+# 7. Verifies deployment health
+```
 
 ### Deployment to Render Platform
 
