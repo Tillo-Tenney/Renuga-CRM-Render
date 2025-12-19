@@ -132,7 +132,6 @@ jobs:
           
       - name: Configure SSH
         run: |
-          set -e
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           
@@ -151,7 +150,10 @@ jobs:
               break
             else
               echo "⚠️ Attempt $i failed, retrying..."
-              [ $i -eq 3 ] && exit 1
+              if [ $i -eq 3 ]; then
+                echo "❌ Failed to retrieve host key after 3 attempts"
+                exit 1
+              fi
               sleep 2
             fi
           done
@@ -298,7 +300,6 @@ jobs:
     steps:
       - name: Configure SSH
         run: |
-          set -e
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           
@@ -317,7 +318,10 @@ jobs:
               break
             else
               echo "⚠️ Attempt $i failed, retrying..."
-              [ $i -eq 3 ] && exit 1
+              if [ $i -eq 3 ]; then
+                echo "❌ Failed to retrieve host key after 3 attempts"
+                exit 1
+              fi
               sleep 2
             fi
           done
