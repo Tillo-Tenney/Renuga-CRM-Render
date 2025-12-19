@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 ###############################################################################
 # GitHub Actions Deployment Helper Script
@@ -108,8 +108,11 @@ display_public_key() {
     
     print_info "To add this key to EC2:"
     echo "1. SSH to your EC2 instance"
-    echo "2. Run: echo \"$(cat $KEY_PATH)\" >> ~/.ssh/authorized_keys"
+    echo "2. Run: echo \"<paste-public-key-here>\" >> ~/.ssh/authorized_keys"
     echo "3. Run: chmod 600 ~/.ssh/authorized_keys"
+    echo ""
+    echo "Or copy the key above and use ssh-copy-id:"
+    echo "   ssh-copy-id -i ${KEY_PATH} ubuntu@YOUR_EC2_IP"
     
     echo ""
     echo -n "Copy public key to clipboard? (requires xclip or pbcopy) (y/N): "

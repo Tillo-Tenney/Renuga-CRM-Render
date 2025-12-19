@@ -20,10 +20,14 @@ cat ~/.ssh/github_deploy_key
 **Value format:**
 ```
 -----BEGIN OPENSSH PRIVATE KEY-----
-b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
-QyNTUxOQAAACBK... [multiple lines] ...AAAA
+AAAAA...example-key-content-line-1...AAAAA
+BBBBB...example-key-content-line-2...BBBBB
+CCCCC...example-key-content-line-3...CCCCC
+[... many more lines of base64-encoded key data ...]
+ZZZZZ...example-key-content-last-line...ZZZZZ
 -----END OPENSSH PRIVATE KEY-----
 ```
+**Note**: This is a placeholder format. Your actual key will have multiple lines of base64-encoded data.
 
 **Important:**
 - Include the full key including `-----BEGIN` and `-----END` lines

@@ -174,7 +174,12 @@ jobs:
           # Run database migrations
           echo "Running database migrations..."
           if [ -f "dist/config/migrate.js" ]; then
-            npm run db:migrate || echo "Migration skipped or failed"
+            if ! npm run db:migrate; then
+              echo "⚠️ Database migration failed - check logs for details"
+              echo "This may be expected if there are no new migrations"
+            fi
+          else
+            echo "ℹ️ No migration script found - skipping migrations"
           fi
           
           # Update Nginx configuration if changed
@@ -200,8 +205,11 @@ jobs:
           rm -f /tmp/deployment.tar.gz
           
           # Keep only last 5 backups
-          cd $BACKUP_DIR
-          ls -t backup_*.tar.gz | tail -n +6 | xargs -r rm
+          if [ -d "$BACKUP_DIR" ] && [ "$(ls -A $BACKUP_DIR/backup_*.tar.gz 2>/dev/null)" ]; then
+            cd $BACKUP_DIR
+            ls -t backup_*.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm || true
+            echo "Old backups cleaned up"
+          fi
           
           echo "Deployment completed successfully!"
           
