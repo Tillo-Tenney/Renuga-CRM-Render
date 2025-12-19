@@ -52,7 +52,7 @@ check_root() {
 
 get_public_ip() {
     # Try multiple methods to get public IP
-    PUBLIC_IP="13.60.196.131"
+    PUBLIC_IP= $(curl -s ifconfig.me)
     echo "$PUBLIC_IP"
 }
 
