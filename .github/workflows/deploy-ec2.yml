@@ -23,12 +23,19 @@ on:
 
 env:
   NODE_VERSION: '20.x'
-  
+
+# Set minimal permissions for GITHUB_TOKEN
+permissions:
+  contents: read
+
 jobs:
   # Job 1: Build and Test Frontend
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
     
     steps:
       - name: Checkout code
@@ -64,6 +71,9 @@ jobs:
     name: Build Backend
     runs-on: ubuntu-latest
     
+    permissions:
+      contents: read
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -97,6 +107,9 @@ jobs:
     runs-on: ubuntu-latest
     # Only deploy on push to main/production, not on PRs
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    permissions:
+      contents: read
     
     environment:
       name: ${{ github.ref == 'refs/heads/production' && 'production' || (github.event.inputs.environment || 'staging') }}
@@ -260,6 +273,9 @@ jobs:
     name: Rollback Deployment
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'rollback'
+    
+    permissions:
+      contents: read
     
     steps:
       - name: Configure SSH
