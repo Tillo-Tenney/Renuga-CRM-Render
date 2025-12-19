@@ -113,7 +113,6 @@ jobs:
     
     environment:
       name: ${{ github.ref == 'refs/heads/production' && 'production' || (github.event.inputs.environment || 'staging') }}
-      url: http://${{ secrets.EC2_HOST }}
     
     steps:
       - name: Checkout code
