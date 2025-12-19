@@ -52,7 +52,18 @@ check_root() {
 
 get_public_ip() {
     # Try multiple methods to get public IP
-    PUBLIC_IP= $(curl -s ifconfig.me)
+    PUBLIC_IP=$(curl -s https://ipinfo.io/ip 2>/dev/null)
+
+    # If empty, try ifconfig.me
+    if [ -z "$PUBLIC_IP" ]; then
+        PUBLIC_IP=$(curl -s ifconfig.me 2>/dev/null)
+    fi
+
+    # If everything fails, set a safe placeholder
+    if [ -z "$PUBLIC_IP" ]; then
+        PUBLIC_IP="_"
+    fi
+    
     echo "$PUBLIC_IP"
 }
 
