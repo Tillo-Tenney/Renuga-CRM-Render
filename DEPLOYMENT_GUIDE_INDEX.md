@@ -407,5 +407,5 @@ This documentation provides complete coverage for deploying Renuga CRM:
 
 **Questions?** Start with the quick start guides and work your way through the documentation. Most answers are already here!
 
-**Last Updated:** December 2024  
+**Last Updated:** December 2025  
 **Maintained By:** Renuga CRM Team
