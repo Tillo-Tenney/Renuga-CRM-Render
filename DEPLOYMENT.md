@@ -253,6 +253,19 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ## Troubleshooting
 
+### "No token provided" Error After Login
+
+**Issue**: Users get "No token provided" error after successful deployment
+
+**Root Cause**: Frontend not configured with correct backend API URL
+
+**Solution**: See detailed troubleshooting guide in [TROUBLESHOOTING_TOKEN_ERROR.md](./TROUBLESHOOTING_TOKEN_ERROR.md)
+
+**Quick Fix**:
+1. Verify `VITE_API_URL` is set in frontend environment variables on Render
+2. Check `/config.js` on your deployed site has correct API URL
+3. Redeploy frontend if environment variable was missing
+
 ### Backend Fails to Start
 
 **Issue**: "Cannot connect to database"
